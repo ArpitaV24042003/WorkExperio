@@ -1,0 +1,112 @@
+#Commands to run alembic each time you change in vs code it will get changed in postgre
+
+alembic revision --autogenerate -m "added new fields"
+alembic upgrade head
+
+
+### ✅ Recommended Workflow for You
+
+1. **Add/modify fields** in `models.py`.
+2. Run:
+
+   ```bash
+   alembic revision --autogenerate -m "your message"
+   alembic upgrade head
+   ```
+3. Verify in PostgreSQL with queries (`\d tablename;`).
+
+#Commands in psql  
+postgres=# SELECT * FROM users;     -- ✅ standard SQL
+postgres=# \dt                     -- ✅ psql meta-command: list tables
+postgres=# \d resumes              -- ✅ psql meta-command: describe table schema
+postgres=# \q      
+                -- ✅ quit psql
+
+#Running Mongodb
+1️⃣ Make sure MongoDB is running
+
+You already started it with:
+
+Code:
+E:\MongoDB\Server\8.0\bin\mongod.exe --dbpath "E:\MongoDB\data\db"
+
+
+Keep this terminal open.
+
+If you close it, MongoDB stops.
+
+Perfect 🚀 — your MongoDB server **started successfully** 🎉
+
+👉 The last lines confirm it:
+
+```
+"msg":"Listening on","attr":{"address":"127.0.0.1:27017"}}
+"msg":"Waiting for connections","attr":{"port":27017,"ssl":"off"}}
+"msg":"mongod startup complete"
+```
+
+So now your database is alive at **mongodb://127.0.0.1:27017**.
+
+---
+
+### ✅ Next Steps (Queries to Run)
+
+1. **Open a new terminal (don’t close mongod window!)**
+   Run:
+   E:\MongoDB\Server\8.0\bin
+
+
+   ```sh
+   mongosh
+   ```
+
+   This opens the MongoDB Shell (client).
+
+2. **Check available databases**
+
+   show dbs
+ 
+
+3. **Create / switch to your project DB**
+
+   use workexperio_db
+   
+
+4. **Create a collection**
+
+
+   db.users.insertOne({ name: "Arpitha", role: "Admin", createdAt: new Date() })
+
+
+5. **View data**
+
+   db.users.find()
+   
+
+6. **Create another collection**
+
+   db.projects.insertOne({ title: "AI Project", status: "ongoing", members: 5 })
+
+
+7. **View all collections in DB**
+
+   show collections
+
+
+---
+
+### 🔗 Connection from Your Backend
+
+Now that MongoDB is running, update your `.env` to use **127.0.0.1 instead of localhost** (to avoid the IPv6 issue you had earlier):
+
+```env
+MONGODB_URL=mongodb://127.0.0.1:27017
+MONGODB_DB=workexperio_db
+
+
+# Activate venv
+.\venv\Scripts\activate
+To deactivate (works on all OS)
+deactivate
+
+
