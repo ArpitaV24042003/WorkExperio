@@ -58,61 +58,55 @@
 # def root():
 #     return {"status": "ok", "service": "WorkExperio Backend"}
 
+import os
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-# Corrected import for models, assuming it's in the same directory
-from . import models
-from .database import Base, engine
-
-Base.metadata.create_all(bind=engine)
-
-
-import sys, os
+from contextlib import asynccontextmanager
 
 # Add root path for imports
-# This might not be necessary depending on your project structure and how you run uvicorn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Routers
+from app.database import Base, engine
 from app.routers import (
     mongo_routes,
     projects,
     users,
     resumes,
     chatbot,
-    teams
-    # skills,
-    # education,
-    # experience,
-    # certificates,
-    # links,
-    # phones
+    teams,
 )
 
-app = FastAPI(title="WorkExperio API")
+# This is the new, robust way to handle startup tasks
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # This code runs on startup
+    print("Application startup: Creating database tables...")
+    Base.metadata.create_all(bind=engine)
+    print("Application startup: Tables created successfully.")
+    yield
+    # This code runs on shutdown (not as important for us)
+    print("Application shutdown.")
+
+# We pass the lifespan function to the FastAPI app
+app = FastAPI(title="WorkExperio API", lifespan=lifespan)
 
 # Enable CORS so your React frontend can talk to FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 🔑 in production restrict to your frontend URL
+    allow_origins=["*"],  # In production, restrict this to your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Register routers (without the tags parameter)
+# Register all your routers
 app.include_router(mongo_routes.router, prefix="/mongo")
 app.include_router(users.router, prefix="/users")
 app.include_router(resumes.router, prefix="/resumes")
 app.include_router(chatbot.router, prefix="/chat")
 app.include_router(teams.router, prefix="/teams")
 app.include_router(projects.router, prefix="/projects")
-# app.include_router(skills.router, prefix="/skills")
-# app.include_router(education.router, prefix="/education")
-# app.include_router(experience.router, prefix="/experience")
-# app.include_router(certificates.router, prefix="/certificates")
-# app.include_router(links.router, prefix="/links")
-# app.include_router(phones.router, prefix="/phones")
 
 # Health check
 @app.get("/")
