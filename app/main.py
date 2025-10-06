@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Routers
 from app.routers import (
     mongo_routes,
+    projects,
     users,
     resumes,
     chatbot,
@@ -44,8 +45,8 @@ app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
 app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
 app.include_router(teams.router, prefix="/teams", tags=["Teams"])
+app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 # app.include_router(skills.router, prefix="/skills", tags=["Skills"])
-# app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 # app.include_router(education.router, prefix="/education", tags=["Education"])
 # app.include_router(experience.router, prefix="/experience", tags=["Experience"])
 # app.include_router(certificates.router, prefix="/certificates", tags=["Certificates"])
