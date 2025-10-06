@@ -17,20 +17,16 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
-
-# Corrected imports
-from .. import crud, schemas
+from .. import schemas
 from ..database import get_db
+from ..crud import projects as crud_projects
 
-# REMOVED prefix
-router = APIRouter(
-    tags=["Projects"]
-)
+router = APIRouter(tags=["Projects"])
 
 @router.post("/", response_model=schemas.ProjectOut)
 def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
-    return crud.create_project(db, project=project)
+    return crud_projects.create_project(db=db, project=project)
 
 @router.get("/user/{user_id}", response_model=List[schemas.ProjectOut])
 def get_user_projects(user_id: int, db: Session = Depends(get_db)):
-    return crud.get_projects_by_user(db, user_id=user_id)
+    return crud_projects.get_projects_by_user(db, user_id=user_id)

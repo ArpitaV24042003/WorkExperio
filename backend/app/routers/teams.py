@@ -24,24 +24,19 @@
 #     return get_teams(db)
 
 
-# routers/teams.py
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import List
-
-# Corrected imports
-from .. import crud, schemas
+from .. import schemas
 from ..database import get_db
+from ..crud import teams as crud_teams
 
-# REMOVED prefix
-router = APIRouter(
-    tags=["Teams"]
-)
+router = APIRouter(tags=["Teams"])
 
 @router.post("/", response_model=schemas.TeamOut)
 def create_team(team: schemas.TeamCreate, db: Session = Depends(get_db)):
-    return crud.create_team(db, team)
+    return crud_teams.create_team(db, team)
 
 @router.get("/", response_model=List[schemas.TeamOut])
 def list_teams(db: Session = Depends(get_db)):
-    return crud.get_all_teams(db)
+    return crud_teams.get_all_teams(db)
