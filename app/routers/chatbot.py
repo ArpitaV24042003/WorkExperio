@@ -17,7 +17,7 @@
 from fastapi import APIRouter, Query
 from typing import List
 
-router = APIRouter()
+router = APIRouter(tags=["Chat"])
 
 chat_history: List[dict] = []
 

@@ -18,7 +18,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-router = APIRouter()
+router = APIRouter(tags=["MongoDB"])
 
 # Mock Mongo saving function
 @router.post("/resume_raw/")

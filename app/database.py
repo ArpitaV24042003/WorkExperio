@@ -1,7 +1,8 @@
 # app/database.py
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 import os
 from dotenv import load_dotenv
 
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # PostgreSQL connection string from .env
-DATABASE_URL ="postgresql+psycopg2://postgres:Arpita2403@localhost:5432/workexperio"
+DATABASE_URL =os.getenv("DATABASE_URL")
 
 # Create engine
 engine = create_engine(DATABASE_URL)

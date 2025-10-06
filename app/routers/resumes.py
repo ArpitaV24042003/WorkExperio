@@ -1,53 +1,22 @@
-# from fastapi import APIRouter, Depends, HTTPException
-# from sqlalchemy.orm import Session
-# from app.database import get_db
-# from app import models
-# from app.mongo import resume_raw
-# import httpx, os
-
-# router = APIRouter(prefix="/resumes", tags=["Resumes"])
-# ML_BASE = os.getenv("ML_BASE_URL", "http://localhost:8001")
-
-# @router.post("/")
-# async def upload_resume(payload: dict, db: Session = Depends(get_db)):
-#     user_id = payload.get("user_id")
-#     resume_text = payload.get("resume_text")
-#     if not user_id or not resume_text:
-#         raise HTTPException(400, "user_id and resume_text required")
-
-#     # store raw in Mongo
-#     resume_raw.insert_one({"user_id": user_id, "text": resume_text})
-
-#     # call ML service
-#     async with httpx.AsyncClient() as client:
-#         resp = await client.post(f"{ML_BASE}/parse", json={"text": resume_text})
-#         parsed = resp.json()
-
-#     # save in Postgres
-#     resume = models.Resume(user_id=user_id, skills=parsed.get("skills"))
-#     db.add(resume); db.commit(); db.refresh(resume)
-
-#     return {"message": "Resume processed", "parsed": parsed}
-
-
-# routers/resumes.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app import crud, schemas, database
+from typing import List
 
-router = APIRouter(prefix="/resumes", tags=["resumes"])
+# Corrected imports
+from .. import crud, schemas
+from ..database import get_db
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# REMOVED prefix
+router = APIRouter(
+    tags=["Resumes"]
+)
 
-@router.post("/", response_model=schemas.ResumeIn)
+@router.post("/", response_model=schemas.ResumeOut)
 def upload_resume(resume: schemas.ResumeIn, db: Session = Depends(get_db)):
-    return crud.create_resume(db, resume)
+    # This will create the resume entry in PostgreSQL.
+    # The resume_text itself can be processed and saved to MongoDB separately.
+    return crud.create_resume(db, resume=resume)
 
-@router.get("/user/{user_id}", response_model=list[schemas.ResumeIn])
+@router.get("/user/{user_id}", response_model=List[schemas.ResumeOut])
 def get_user_resumes(user_id: int, db: Session = Depends(get_db)):
-    return crud.get_resumes_by_user(db, user_id)
+    return crud.get_resumes_by_user(db, user_id=user_id)

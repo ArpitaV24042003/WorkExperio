@@ -1,28 +1,28 @@
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
+from datetime import datetime
 
-# ---------------- Users ----------------
-class UserCreate(BaseModel):
+# --- User Schemas ---
+class UserBase(BaseModel):
     name: str
     email: EmailStr
+
+class UserCreate(UserBase):
     password: str
 
-class UserOut(BaseModel):
+class UserOut(UserBase):
     id: int
-    name: str
-    email: EmailStr
-
     class Config:
-        from_attributes = True  # ✅ Allows automatic conversion from SQLAlchemy models
+        from_attributes = True
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-# ---------------- Resumes ----------------
+# --- Resume Schemas ---
 class ResumeIn(BaseModel):
     user_id: int
-    resume_text: str
+    resume_text: str # This is for processing, may not be stored in SQL
     file_url: Optional[str] = None
 
 class ResumeOut(BaseModel):
@@ -30,28 +30,24 @@ class ResumeOut(BaseModel):
     user_id: int
     file_url: Optional[str]
     parsed_mongo_id: Optional[str]
-    uploaded_at: Optional[str]
-    manual_additions: Optional[str]
-    is_verified: bool
-
+    uploaded_at: datetime
     class Config:
         from_attributes = True
 
-# ---------------- Teams ----------------
+# --- Team Schemas ---
 class TeamBase(BaseModel):
     name: str
-    description: Optional[str] = None  # Optional field
+    description: Optional[str] = None
 
 class TeamCreate(TeamBase):
     pass
 
 class TeamOut(TeamBase):
     id: int
-
     class Config:
         from_attributes = True
 
-# ---------------- Projects ----------------
+# --- Project Schemas ---
 class ProjectBase(BaseModel):
     title: str
     description: Optional[str] = None
@@ -63,6 +59,5 @@ class ProjectCreate(ProjectBase):
 class ProjectOut(ProjectBase):
     id: int
     user_id: int
-
     class Config:
         from_attributes = True

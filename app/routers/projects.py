@@ -14,30 +14,23 @@
 #     return get_projects(db)
 
 
-# routers/projects.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app import crud, schemas, database
+from typing import List
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+# Corrected imports
+from .. import crud, schemas
+from ..database import get_db
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# REMOVED prefix
+router = APIRouter(
+    tags=["Projects"]
+)
 
 @router.post("/", response_model=schemas.ProjectOut)
 def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)):
-    return crud.create_project(
-        db, 
-        user_id=project.user_id, 
-        title=project.title, 
-        description=project.description or "", 
-        technologies=project.technologies or ""
-    )
+    return crud.create_project(db, project=project)
 
-@router.get("/user/{user_id}", response_model=list[schemas.ProjectOut])
+@router.get("/user/{user_id}", response_model=List[schemas.ProjectOut])
 def get_user_projects(user_id: int, db: Session = Depends(get_db)):
-    return crud.get_projects_by_user(db, user_id)
+    return crud.get_projects_by_user(db, user_id=user_id)
