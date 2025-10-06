@@ -5,7 +5,7 @@ from app import models
 from app.mongo import resume_raw
 import httpx, os
 
-router = APIRouter()
+router = APIRouter(prefix="/resumes", tags=["Resumes"])
 ML_BASE = os.getenv("ML_BASE_URL", "http://localhost:8001")
 
 @router.post("/")

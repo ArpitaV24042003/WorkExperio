@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.utils.mongo import save_chat_message, get_chat_history
+from app.mongo import save_chat_message, get_chat_history
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -11,3 +11,5 @@ def send_message(user_name: str, message: str):
 @router.get("/history")
 def chat_history():
     return get_chat_history()
+
+

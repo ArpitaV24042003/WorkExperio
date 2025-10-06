@@ -32,7 +32,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
     email = Column(String(100), unique=True, index=True)
-
+    password=Column(String, nullable=False)
     resumes = relationship("Resume", back_populates="user")
     skills = relationship("Skill", secondary=user_skill, back_populates="users")
     phones = relationship("Phone", back_populates="user", cascade="all, delete-orphan")

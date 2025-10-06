@@ -1,0 +1,13 @@
+virtual env Activate
+---->
+.\venv\Scripts\Activate.ps1
+
+
+run main --->
+python -m app.main
+
+testing your backend routes via FastAPI’s Swagger UI.
+--->
+uvicorn app.main:app --reload
+
+
