@@ -2,13 +2,11 @@ import os
 import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 
 # This structure helps ensure all modules are found correctly
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.database import Base, engine
 from app.routers import (
     mongo_routes,
     projects,
@@ -18,26 +16,8 @@ from app.routers import (
     teams,
 )
 
-# This is the new, robust way to handle startup tasks.
-# It is guaranteed to run BEFORE the application starts accepting requests.
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # This code runs on server startup
-    print("Application startup: Creating database tables...")
-    # Use a try-except block for safety
-    try:
-        Base.metadata.create_all(bind=engine)
-        print("Application startup: Tables created successfully.")
-    except Exception as e:
-        print(f"Error creating tables: {e}")
-    
-    yield
-    
-    # This code runs on server shutdown
-    print("Application shutdown.")
-
-# We pass the new lifespan function to the FastAPI app
-app = FastAPI(title="WorkExperio API", lifespan=lifespan)
+# No lifespan function is needed here, as Alembic will handle the database setup.
+app = FastAPI(title="WorkExperio API")
 
 # Enable CORS so your React frontend can talk to FastAPI
 app.add_middleware(
