@@ -7,7 +7,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # --- Import your models Base ---
-# Make sure this path is correct: going up from migrations → backend → app
+# migrations → backend → app
 sys.path.insert(0, dirname(dirname(abspath(__file__))))
 from app.models import Base
 
@@ -22,9 +22,23 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def get_database_url() -> str:
+    """Try multiple environment variable names for DB URL."""
+    db_url = (
+        os.getenv("DATABASE_URL")
+        or os.getenv("POSTGRES_URL")
+        or os.getenv("PGDATABASE_URL")
+        or config.get_main_option("sqlalchemy.url")
+    )
+    if not db_url:
+        raise RuntimeError("❌ No database URL found for Alembic migrations.")
+    print(f"🔗 Alembic connecting to DB: {db_url}")
+    return db_url
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    url = get_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -38,7 +52,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    db_url = get_database_url()
 
     alembic_config = config.get_section(config.config_ini_section)
     alembic_config["sqlalchemy.url"] = db_url
