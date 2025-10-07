@@ -1,6 +1,3 @@
-from app.database import Base, engine
-from app import models
+# routers/__init__.py
 
-print("Creating tables...")
-Base.metadata.create_all(bind=engine)
-print("Tables created.")
+# This file is now empty.
