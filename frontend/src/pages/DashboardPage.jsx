@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { useState } from "react";
 import bg from "../assets/Profilepicture.jpeg";
 import { Bell, UserCircle } from "lucide-react";
+import { apiRequest } from "../api";
+
 
 export default function DashboardPage() {
   const [role] = useState("Frontend Developer");              // 👉 example role

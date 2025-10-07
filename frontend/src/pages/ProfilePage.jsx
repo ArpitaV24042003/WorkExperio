@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import "./LoginSignup.css";
+import { apiRequest } from "../api";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(false);

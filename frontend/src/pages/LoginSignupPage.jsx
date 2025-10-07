@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import "./LoginSignup.css";
+import { apiRequest } from "../api";
 
 export default function LoginSignupPage() {
   const [isSignup, setIsSignup] = useState(false);

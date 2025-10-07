@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
 import bg from "../assets/pixelOffice.png";
 
+
+
 export default function LandingPage() {
   return (
     <div

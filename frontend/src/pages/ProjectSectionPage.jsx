@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import bg from "../assets/Profilepicture.jpeg";
+import { apiRequest } from "../api";
 
 export default function ProjectSection() {
   // ✅ For new users, start empty. For testing, preloaded one project.

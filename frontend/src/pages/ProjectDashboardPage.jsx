@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { Send, CornerUpLeft, PlusCircle, Paperclip, CheckCircle, XCircle, ChevronLeft, GitBranch, Zap, Trophy, TrendingUp, Cpu } from 'lucide-react';
 
+import { apiRequest } from "../api";
 // Firebase and API Constants (Mandatory for a full application)
 const apiKey = "";
 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
