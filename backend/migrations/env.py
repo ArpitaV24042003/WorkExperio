@@ -2,7 +2,8 @@ from logging.config import fileConfig
 import sys
 import os
 from os.path import abspath, dirname
-
+from app.database import Base  # Or wherever your SQLAlchemy Base is defined
+from app import models  
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
