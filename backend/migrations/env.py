@@ -2,15 +2,14 @@ from logging.config import fileConfig
 import sys
 import os
 from os.path import abspath, dirname
-from app.database import Base  # Or wherever your SQLAlchemy Base is defined
-from app import models  
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # --- Import your models Base ---
 # migrations → backend → app
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
-from app.models import Base
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from app.database import Base
+from app import models  
 
 # --- Alembic Config ---
 config = context.config
