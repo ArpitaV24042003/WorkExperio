@@ -9,7 +9,7 @@ from alembic import context
 
 # --- Import your models Base ---
 # migrations → backend → app
-sys.path.insert(0, dirname(dirname(abspath(__file__))))
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
 from app.models import Base
 
 # --- Alembic Config ---
