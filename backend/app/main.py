@@ -3,6 +3,12 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+
+# ADD THIS PRINT STATEMENT
+print("="*50)
+print(f"DATABASE URL AT RUNTIME: {os.getenv('DATABASE_URL')}")
+print("="*50)
+
 # This structure helps ensure all modules are found correctly
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
