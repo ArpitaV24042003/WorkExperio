@@ -27,13 +27,13 @@ from app.routers import (
 # --- Initialize FastAPI App ---
 app = FastAPI(
     title="WorkExperio API",
-    version="0.1.0",
-    description="Backend API for WorkExperio — AI-driven Team Formation & Performance Analysis",
+    description="Backend API for WorkExperio Project",
+    version="1.0.0",
     servers=[
-        {"url": "http://127.0.0.1:8000", "description": "Local development server"}
+        {"url": "https://workexperio-backend.onrender.com", "description": "Production Server"},
+        {"url": "http://127.0.0.1:8000", "description": "Local Server"},
     ]
 )
-
 # --- Enable CORS ---
 app.add_middleware(
     CORSMiddleware,
