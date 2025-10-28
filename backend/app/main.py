@@ -3,7 +3,8 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from .database import engine 
+from .database import engine,Base
+from app import models
 
 # --- Debugging ---
 # Print the database URL when the application starts
@@ -66,3 +67,5 @@ app.include_router(projects.router, prefix="/projects")
 def root():
     return {"status": "ok", "service": "WorkExperio Backend"}
 
+print("Creating database tables if not exist...")
+Base.metadata.create_all(bind=engine)
