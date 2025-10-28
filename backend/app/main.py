@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.database import engine, Base
+import app.models 
 
 # --- Debugging: Print database URL ---
 print("=" * 60)
