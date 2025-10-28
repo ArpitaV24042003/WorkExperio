@@ -84,5 +84,5 @@ print("✅ Database setup complete.")
 # --- Run this if executed directly ---
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
+    port = int(os.environ.get("PORT", 8000))  # Render assigns port dynamically
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
