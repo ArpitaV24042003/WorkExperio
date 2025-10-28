@@ -4,8 +4,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from .database import Base
 
-Base = declarative_base()
-
 # -------------------------
 # Many-to-Many Relationships
 # -------------------------
