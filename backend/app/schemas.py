@@ -89,7 +89,7 @@ class UserOut(UserBase):
     preferred_domain_id: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # NEW: For setting user availability
 class UserAvailability(BaseModel):
@@ -112,7 +112,7 @@ class ResumeOut(BaseModel):
     is_verified: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProjectCreate(BaseModel):
     user_id: int # This is for a PERSONAL project
@@ -124,7 +124,7 @@ class ProjectOut(ProjectCreate):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # =========================
 # Team & Domain Schemas
@@ -139,7 +139,7 @@ class TeamOut(TeamCreate):
     chat_room: Optional[dict] = None 
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # NEW: For team_formation.py config
 class DomainCreate(BaseModel):
@@ -149,7 +149,7 @@ class DomainCreate(BaseModel):
 class DomainOut(DomainCreate):
     id: int
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # NEW: For team_formation.py config
 class RoleCreate(BaseModel):
@@ -162,7 +162,7 @@ class RoleOut(BaseModel):
     name: str
     domain_id: int
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # =========================
 # Team Project Schemas
@@ -179,7 +179,7 @@ class TeamProjectOut(TeamProjectCreate):
     team_id: int
     status: str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # =========================
 # Chat Schemas
@@ -198,4 +198,4 @@ class MessageOut(BaseModel):
     timestamp: datetime 
 
     class Config:
-        orm_mode = True
+        from_attributes = True
