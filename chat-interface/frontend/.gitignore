@@ -1,0 +1,16 @@
+# Environment files
+.env
+.env.*
+!.env.example  # (optional) keep a sample env if you want
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs and OS files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
