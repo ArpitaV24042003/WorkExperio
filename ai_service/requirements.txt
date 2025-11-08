@@ -1,0 +1,18 @@
+fastapi>=0.95
+uvicorn[standard]>=0.20
+pandas
+numpy
+scikit-learn
+python-dotenv
+requests
+python-multipart
+pydantic
+pdfplumber
+spacy
+
+
+# Add below only if your models use them:
+# torch
+# transformers
+# spacy
+# nltk
