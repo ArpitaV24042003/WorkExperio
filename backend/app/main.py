@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.database import engine, Base
 import app.models
-from .routers import ai as ai_router 
+from .routers import ai as ai_router
+from .routers import auth as auth_router  
 
 # --- Debugging: Print database URL ---
 print("=" * 60)
@@ -96,6 +97,7 @@ app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
 app.include_router(teams.router, prefix="/teams", tags=["Teams"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 app.include_router(ai_router.router)
+app.include_router(auth_router.router) 
 
 # --- Create tables if they don’t exist ---
 print("Creating database tables (if not exist)...")
