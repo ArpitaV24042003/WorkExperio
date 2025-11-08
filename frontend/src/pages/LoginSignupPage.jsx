@@ -6,9 +6,12 @@ import { apiRequest } from "../api";
 export default function LoginSignupPage() {
   const [isSignup, setIsSignup] = useState(false);
 
+  // const handleGitHubAuth = () => {
+  //   // redirect to your backend’s GitHub authentication route:
+  //   window.location.href = "/api/auth/github";
+  // };
   const handleGitHubAuth = () => {
-    // redirect to your backend’s GitHub authentication route:
-    window.location.href = "/api/auth/github";
+    window.location.href = `${import.meta.env.VITE_API_URL}/auth/github/login`;
   };
 
   return (
@@ -45,7 +48,10 @@ export default function LoginSignupPage() {
               </button>
               <p className="signup-info">
                 Already have an account?{" "}
-                <span className="signup-link" onClick={() => setIsSignup(false)}>
+                <span
+                  className="signup-link"
+                  onClick={() => setIsSignup(false)}
+                >
                   Log In
                 </span>
               </p>
