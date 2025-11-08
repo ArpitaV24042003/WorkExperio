@@ -1,7 +1,7 @@
 # Environment files
 .env
 .env.*
-!.env.example  # (optional) keep a sample env if you want
+!.env.example  # keep only example
 
 # Dependencies
 node_modules/
