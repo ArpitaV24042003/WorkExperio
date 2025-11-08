@@ -42,6 +42,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Define your specific origins
+# origins = [
+#     "https://workexperio.onrender.com",         # Your main frontend
+#     "https://workexperio-backend.onrender.com", # Your backend (for the docs)
+#     "http://127.0.0.1:8000",                   # Local dev
+#     "http://localhost:8000",                    # Local dev
+#     "http://localhost:5173",                    # Default Vite/React dev port (if you use it)
+# ]
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,  # <-- USE THE SPECIFIC LIST
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+
+
+
 # --- Root Endpoint ---
 @app.get("/")
 def root():
