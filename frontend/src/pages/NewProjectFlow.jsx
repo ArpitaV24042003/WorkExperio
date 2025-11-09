@@ -1,8 +1,11 @@
 import React, { useState } from "react";
-import bg from "../assets/Profilepicture.jpeg"; // ✅ same background image
-import { apiRequest } from "../api"; // <- make sure src/api.js exists and is exported
+import bg from "../assets/Profilepicture.jpeg";
+import { apiRequest } from "../api";
+import { useNavigate } from "react-router-dom";
 
 export default function NewProjectFlow() {
+  const navigate = useNavigate();
+
   const [flowStep, setFlowStep] = useState("choose_team");
   const [formData, setFormData] = useState({
     domain: "",
@@ -15,7 +18,6 @@ export default function NewProjectFlow() {
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
 
-  // Dummy fallback response used when the backend/DB is unavailable
   const dummyResponse = {
     problemStatement: "Develop a decentralized social media platform.",
     details: "A detailed breakdown of the problem... (fallback)",
@@ -25,26 +27,18 @@ export default function NewProjectFlow() {
 
   const validateForm = (isExistingTeam) => {
     let newErrors = {};
-
-    if (!formData.domain.trim()) {
+    if (!formData.domain.trim())
       newErrors.domain = "Filling this field is Required.";
-    }
-
-    if (isExistingTeam && !formData.teammates.trim()) {
+    if (isExistingTeam && !formData.teammates.trim())
       newErrors.teammates = "Filling this field is Required.";
-    }
-
-    if (!isExistingTeam && !formData.skillLevel.trim()) {
+    if (!isExistingTeam && !formData.skillLevel.trim())
       newErrors.skillLevel = "Filling this field is Required.";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleManualTeamSubmit = () => {
     if (!validateForm(true)) return;
-    // Save minimal info locally or let backend save later
     setFlowStep("llm_process");
   };
 
@@ -56,33 +50,22 @@ export default function NewProjectFlow() {
 
   const handleTeamFormed = () => setFlowStep("llm_process");
 
-  // Calls the backend LLM proxy at /make-prediction
-  // If the backend fails, fallback to dummyResponse so UI can continue.
   const handleLlmSubmit = async () => {
     setLoading(true);
     setApiError(null);
-
-    // Build the payload expected by your backend/ML model.
-    // Adjust keys to match the backend contract.
     const payload = {
       domain: formData.domain,
       teammates: formData.teammates,
       skillLevel: formData.skillLevel,
-      // you can include more context here
     };
-
     try {
-      // Try calling the backend proxy endpoint
       const response = await apiRequest("/make-prediction", "POST", payload);
-      // response should be the model output. Adjust if backend wraps data differently.
       setLlmResponse(response);
       setFlowStep("display_llm_response");
     } catch (err) {
-      console.warn("LLM call failed, using fallback dummy response:", err);
       setApiError(
         "Unable to reach LLM backend. Using fallback data so you can continue testing."
       );
-      // fallback so frontend testing can continue
       setLlmResponse(dummyResponse);
       setFlowStep("display_llm_response");
     } finally {
@@ -90,41 +73,32 @@ export default function NewProjectFlow() {
     }
   };
 
-  // Try to save the project to backend at /projects (or whatever your endpoint)
-  // If DB is down, show error and let user continue locally
   const handleSaveToDatabase = async () => {
     setLoading(true);
     setApiError(null);
 
     const projectPayload = {
+      name: `${formData.domain} Project`,
       domain: formData.domain,
-      teammates:
-        formData.teammates
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean) || [],
+      teammates: formData.teammates
+        ? formData.teammates
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
       skillLevel: formData.skillLevel,
-      llmGenerated: llmResponse,
+      aiPlan: llmResponse,
+      phase: "Phase 1 — Planning",
       createdAt: new Date().toISOString(),
     };
 
     try {
-      // IMPORTANT: change "/projects" to your real create-project endpoint if different
       const saved = await apiRequest("/projects", "POST", projectPayload);
-      alert("Project details saved to the database successfully!");
-      // Reset
-      setFlowStep("choose_team");
-      setFormData({ domain: "", teammates: "", skillLevel: "" });
-      setErrors({});
-      setLlmResponse(null);
-      // Optionally update UI with saved project if response contains it
-      console.log("Saved project response:", saved);
+      alert("Project saved successfully!");
+      if (saved?.id) navigate(`/projects/${saved.id}`);
+      else navigate("/projects");
     } catch (err) {
-      console.error("Failed to save project:", err);
-      setApiError(
-        "Saving to DB failed (likely Postgres). Your project is still shown locally."
-      );
-      // Keep the LLM response and allow user to continue; you can also persist locally as needed
+      setApiError("Saving to DB failed. Your project is still shown locally.");
     } finally {
       setLoading(false);
     }
@@ -135,14 +109,12 @@ export default function NewProjectFlow() {
       className="min-h-screen bg-cover bg-center flex items-center justify-center"
       style={{ backgroundImage: `url(${bg})` }}
     >
-      {/* Overlay */}
       <div className="min-h-screen w-full bg-black bg-opacity-50 flex items-center justify-center p-6">
         <div className="bg-white bg-opacity-90 p-10 rounded-2xl shadow-lg w-full max-w-3xl">
           <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">
             New Project Flow (Team Formation)
           </h1>
 
-          {/* Global status / errors */}
           {apiError && (
             <div className="mb-4 p-3 bg-yellow-100 text-yellow-800 rounded">
               {apiError}
@@ -155,7 +127,6 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 1: Choose Team */}
           {flowStep === "choose_team" && (
             <div className="space-x-6 flex justify-center">
               <button
@@ -173,7 +144,6 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 2a: Manual Team Form */}
           {flowStep === "manual_team" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4">
@@ -190,18 +160,22 @@ export default function NewProjectFlow() {
               >
                 <option value="">Select Domain</option>
                 <option value="Web Development">Web Development</option>
-                <option value="Artificial Intelligence">Artificial Intelligence</option>
+                <option value="Artificial Intelligence">
+                  Artificial Intelligence
+                </option>
                 <option value="Machine Learning">Machine Learning</option>
                 <option value="Cybersecurity">Cybersecurity</option>
                 <option value="Data Science">Data Science</option>
-                <option value="Mobile App Development">Mobile App Development</option>
+                <option value="Mobile App Development">
+                  Mobile App Development
+                </option>
               </select>
               {errors.domain && (
                 <p className="text-red-500 text-sm mb-3">{errors.domain}</p>
               )}
 
               <label className="block mb-2 font-medium">
-                Add Teammates (WorkExperio User IDs)
+                Add Teammates (User IDs or emails)
               </label>
               <input
                 type="text"
@@ -210,7 +184,7 @@ export default function NewProjectFlow() {
                   setFormData({ ...formData, teammates: e.target.value })
                 }
                 className="w-full border p-2 rounded mb-1"
-                placeholder="Comma-separated IDs"
+                placeholder="Comma-separated"
               />
               {errors.teammates && (
                 <p className="text-red-500 text-sm mb-3">{errors.teammates}</p>
@@ -249,7 +223,6 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 2b: ML Team Form */}
           {flowStep === "ml_team" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4">
@@ -266,17 +239,23 @@ export default function NewProjectFlow() {
               >
                 <option value="">Select Domain</option>
                 <option value="Web Development">Web Development</option>
-                <option value="Artificial Intelligence">Artificial Intelligence</option>
+                <option value="Artificial Intelligence">
+                  Artificial Intelligence
+                </option>
                 <option value="Machine Learning">Machine Learning</option>
                 <option value="Cybersecurity">Cybersecurity</option>
                 <option value="Data Science">Data Science</option>
-                <option value="Mobile App Development">Mobile App Development</option>
+                <option value="Mobile App Development">
+                  Mobile App Development
+                </option>
               </select>
               {errors.domain && (
                 <p className="text-red-500 text-sm mb-3">{errors.domain}</p>
               )}
 
-              <label className="block mb-2 font-medium">Analyze Skill Level</label>
+              <label className="block mb-2 font-medium">
+                Analyze Skill Level
+              </label>
               <select
                 value={formData.skillLevel}
                 onChange={(e) =>
@@ -310,10 +289,11 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 3: Waiting List */}
           {flowStep === "waiting_list" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-lg font-semibold mb-4">Team Formation in Progress</h2>
+              <h2 className="text-lg font-semibold mb-4">
+                Team Formation in Progress
+              </h2>
               <p>
                 You've been added to the waiting list. The ML algorithm is
                 forming your team based on project requirements and skill
@@ -330,13 +310,15 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 4: LLM Process */}
           {flowStep === "llm_process" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4">
                 Generating Project Details with LLM
               </h2>
-              <p>Please wait while the Large Language Model generates the detailed project plan.</p>
+              <p>
+                Please wait while the Large Language Model generates the
+                detailed project plan.
+              </p>
               <div className="flex justify-center mt-4">
                 <button
                   onClick={handleLlmSubmit}
@@ -349,10 +331,11 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 5: Display LLM Response */}
           {flowStep === "display_llm_response" && llmResponse && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-lg font-semibold mb-4">LLM Generated Project Plan</h2>
+              <h2 className="text-lg font-semibold mb-4">
+                LLM Generated Project Plan
+              </h2>
 
               <div className="mb-4">
                 <h3 className="font-semibold">Problem Statement:</h3>
@@ -361,7 +344,7 @@ export default function NewProjectFlow() {
 
               <div className="mb-4">
                 <h3 className="font-semibold">Details:</h3>
-                <p>{llmResponse.details}</p>
+                <p className="whitespace-pre-wrap">{llmResponse.details}</p>
               </div>
 
               <div className="mb-4">
@@ -388,9 +371,12 @@ export default function NewProjectFlow() {
                   </button>
                   <button
                     onClick={() => {
-                      // locally dismiss and reset state without saving
                       setFlowStep("choose_team");
-                      setFormData({ domain: "", teammates: "", skillLevel: "" });
+                      setFormData({
+                        domain: "",
+                        teammates: "",
+                        skillLevel: "",
+                      });
                       setLlmResponse(null);
                       setErrors({});
                     }}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import "./LoginSignup.css";
 import { apiRequest } from "../api";
@@ -7,6 +7,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [resumeFile, setResumeFile] = useState(null);
   const [parsedResume, setParsedResume] = useState(null);
+  const [apiError, setApiError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   const [profile, setProfile] = useState({
     name: "",
@@ -23,40 +25,78 @@ export default function ProfilePage() {
     entities: false,
   });
 
+  useEffect(() => {
+    let ignore = false;
+    (async () => {
+      setLoading(true);
+      setApiError(null);
+      try {
+        const me = await apiRequest("/users/me", "GET");
+        if (!ignore && me) {
+          setProfile({
+            name: me.name || "",
+            email: me.email || "",
+            phone: me.phone || "",
+            linkedIn: me.linkedIn || me.linkedin || "",
+          });
+          if (me.resumeParsed) setParsedResume(me.resumeParsed);
+        }
+      } catch (err) {
+        if (!ignore) setApiError(err?.message || "Failed to load profile");
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => (ignore = true);
+  }, []);
+
   const handleResumeChange = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
     setResumeFile(file);
     setLoading(true);
+    setApiError(null);
 
     try {
       const formData = new FormData();
       formData.append("resume", file);
-      const res = await fetch("/api/resumes/parse", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
+      const data = await apiRequest("/resumes/parse", "POST", formData);
       setParsedResume(data);
     } catch (err) {
-      console.error(err);
+      setApiError(
+        "Resume parsing failed: " + (err?.message || "Unknown error")
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = () => {
-    const payload = {
-      ...profile,
-      resume: resumeFile?.name,
-      skills: parsedResume?.skills,
-      education: parsedResume?.sections?.Education,
-      projects: parsedResume?.sections?.Projects,
-      certificates: parsedResume?.sections?.Certificates,
-      entities: parsedResume?.entities,
-    };
-    console.log(payload);
-    alert("Saved!");
+  const handleSave = async () => {
+    setSaving(true);
+    setApiError(null);
+    try {
+      const payload = {
+        ...profile,
+        resume: resumeFile?.name,
+        resumeParsed: {
+          skills: parsedResume?.skills,
+          sections: parsedResume?.sections,
+          entities: parsedResume?.entities,
+        },
+      };
+      const updated = await apiRequest("/users/me", "PATCH", payload);
+      setProfile({
+        name: updated.name || profile.name,
+        email: updated.email || profile.email,
+        phone: updated.phone || profile.phone,
+        linkedIn: updated.linkedIn || updated.linkedin || profile.linkedIn,
+      });
+      alert("Profile saved!");
+    } catch (err) {
+      setApiError(err?.message || "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderSection = (title, key, data) => (
@@ -93,13 +133,17 @@ export default function ProfilePage() {
           className="inputField"
           rows={4}
           defaultValue={
-            Array.isArray(data) ? data.join("\n") : JSON.stringify(data, null, 2)
+            Array.isArray(data)
+              ? data.join("\n")
+              : JSON.stringify(data, null, 2)
           }
           onBlur={(e) => {
             const val = e.target.value;
             setParsedResume((r) => ({
-              ...r,
-              [key]: Array.isArray(data) ? val.split("\n") : JSON.parse(val),
+              ...(r || {}),
+              [key]: Array.isArray(data)
+                ? val.split("\n")
+                : JSON.parse(val || "{}"),
             }));
             setEditMode({ ...editMode, [key]: false });
           }}
@@ -110,7 +154,6 @@ export default function ProfilePage() {
 
   return (
     <div className="web-wrapper">
-      {/* TOP HEADER BAR  */}
       <nav className="topbar">
         <h2 className="logoHeading">
           <span className="circleLogo">w</span> <i>WorkExperio</i>
@@ -118,10 +161,18 @@ export default function ProfilePage() {
       </nav>
 
       <div className="login-section">
-        <div className="login-card" style={{ maxWidth: "550px", width: "100%" }}>
-          <h2 style={{ marginBottom: "25px" }}> PROFILE</h2>
+        <div
+          className="login-card"
+          style={{ maxWidth: "550px", width: "100%" }}
+        >
+          <h2 style={{ marginBottom: "25px" }}>PROFILE</h2>
 
-          {/* editable boxes */}
+          {apiError && (
+            <div className="mb-3 p-2 rounded bg-yellow-100 text-yellow-800">
+              {apiError}
+            </div>
+          )}
+
           <div style={{ textAlign: "left" }}>
             <label style={{ color: "#00e4ff" }}>Name:</label>
             <input
@@ -137,7 +188,9 @@ export default function ProfilePage() {
               className="inputField"
               placeholder="Enter Email"
               value={profile.email}
-              onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+              onChange={(e) =>
+                setProfile({ ...profile, email: e.target.value })
+              }
             />
           </div>
           <div style={{ textAlign: "left" }}>
@@ -146,7 +199,9 @@ export default function ProfilePage() {
               className="inputField"
               placeholder="Enter Phone"
               value={profile.phone}
-              onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+              onChange={(e) =>
+                setProfile({ ...profile, phone: e.target.value })
+              }
             />
           </div>
           <div style={{ textAlign: "left" }}>
@@ -155,13 +210,19 @@ export default function ProfilePage() {
               className="inputField"
               placeholder="LinkedIn Profile"
               value={profile.linkedIn}
-              onChange={(e) => setProfile({ ...profile, linkedIn: e.target.value })}
+              onChange={(e) =>
+                setProfile({ ...profile, linkedIn: e.target.value })
+              }
             />
           </div>
 
           <div style={{ textAlign: "left" }}>
             <label style={{ color: "#00e4ff" }}>Resume Upload:</label>
-            <input type="file" onChange={handleResumeChange} className="inputField" />
+            <input
+              type="file"
+              onChange={handleResumeChange}
+              className="inputField"
+            />
           </div>
 
           {loading ? (
@@ -203,13 +264,15 @@ export default function ProfilePage() {
             )
           )}
 
-          <button className="login-btn mt-3" onClick={handleSave}>
-            SAVE PROFILE
+          <button
+            className="login-btn mt-3"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "SAVE PROFILE"}
           </button>
         </div>
       </div>
     </div>
   );
 }
-
-
