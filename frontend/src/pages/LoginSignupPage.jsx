@@ -2,34 +2,50 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
-import { apiRequest } from "../api";
+import { apiRequest } from "../api"; // if you don't have this, see the helper below
 
 export default function LoginSignupPage() {
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const backendUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("handleSubmit called", { isSignup, email, name });
+    setLoading(true);
+
     try {
       if (isSignup) {
-        await apiRequest("/users/register", "POST", { name, email, password });
+        const res = await apiRequest("/users/register", "POST", {
+          name,
+          email,
+          password,
+        });
+        console.log("signup response", res);
         alert("Signup successful! Please log in.");
         setIsSignup(false);
+        setName("");
+        setPassword("");
+        setEmail("");
       } else {
         const data = await apiRequest("/users/login", "POST", {
           email,
           password,
         });
+        console.log("login response", data);
+        // Save token or user as your app expects
         localStorage.setItem("user", JSON.stringify(data));
-        navigate("/dashboard"); // or "/project-dashboard" if you prefer
+        // navigate to Project Dashboard page
+        navigate("/dashboard");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      console.error("Auth error:", err);
+      alert("Error: " + (err?.message || JSON.stringify(err)));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,7 +71,6 @@ export default function LoginSignupPage() {
                 placeholder="Full name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
                 required
               />
             )}
@@ -65,7 +80,6 @@ export default function LoginSignupPage() {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
               required
             />
             <input
@@ -74,11 +88,17 @@ export default function LoginSignupPage() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete={isSignup ? "new-password" : "current-password"}
               required
             />
-            <button type="submit" className="login-btn">
-              {isSignup ? "Sign Up" : "Log In"}
+
+            <button type="submit" className="login-btn" disabled={loading}>
+              {loading
+                ? isSignup
+                  ? "Signing up..."
+                  : "Logging in..."
+                : isSignup
+                ? "Sign Up"
+                : "Log In"}
             </button>
           </form>
 
