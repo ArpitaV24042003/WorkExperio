@@ -44,7 +44,7 @@ async def github_login(request: Request):
     Make sure the GitHub app callback URL is:
       {BACKEND_BASE_URL}/auth/github/callback
     """
-    redirect_uri = f"{BACKEND_BASE_URL}/auth/github/callback"
+    redirect_uri = f"{BACKEND_BASE_URL}/auth/github/login"
     return await oauth.github.authorize_redirect(request, redirect_uri)
 
 
