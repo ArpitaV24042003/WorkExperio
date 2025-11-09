@@ -24,7 +24,7 @@ app = FastAPI(
     version="1.0.0",
     description="Backend for WorkExperio project",
     servers=[
-        {"url": os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000"), "description": "Backend"},
+        {"url": os.getenv("BACKEND_BASE_URL", "https://workexperio.onrender.com"), "description": "Backend"},
         {"url": "http://127.0.0.1:8000", "description": "Local (Development)"},
     ],
 )
@@ -45,6 +45,7 @@ _allowed = os.getenv(
             "https://workexperio-1.onrender.com",
             "https://workexperio-2.onrender.com",
             "https://workexperio-3.onrender.com",
+            "https://workexperio-4.onrender.com"
         ]
     ),
 )
