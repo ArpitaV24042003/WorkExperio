@@ -1,16 +1,11 @@
-/* LoginSignup.css - full file for WorkExperio login/signup page */
-
-/* --- Page wrapper / background --- */
 .web-wrapper {
   min-height: 100vh;
   background: radial-gradient(circle at top, #103c75, #000428 70%);
-  font-family: "Press Start 2P", sans-serif;
+  font-family: "Press Start 2P", sans-serif; /* optional pixel font */
   color: #f0f0f0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- Top bar / header --- */
+/* Top gaming bar */
 .topbar {
   padding: 15px 30px;
   background: #031b39;
@@ -26,8 +21,7 @@
   text-shadow: 0 0 8px #00e4ff;
   display: flex;
   align-items: center;
-  font-style: italic;
-  color: #e9f6ff;
+  font-style: italic; /* NEW */
 }
 
 .circleLogo {
@@ -49,80 +43,57 @@
   cursor: pointer;
 }
 
-/* --- Center Section --- */
+/* Center Section */
 .login-section {
   display: flex;
   justify-content: center;
   padding-top: 80px;
-  padding-bottom: 80px;
 }
 
-/* Login card (neon box) */
 .login-card {
   background: rgba(3, 27, 57, 0.8);
   border: 2px solid #00e4ff;
-  box-shadow: 0 0 40px rgba(0, 228, 255, 0.25), 0 10px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 25px #00e4ff;
   padding: 50px 40px;
   border-radius: 12px;
   width: 380px;
   text-align: center;
-  position: relative;
 }
 
-/* Title inside card */
-.login-title {
-  margin: 0 0 18px 0;
-  font-size: 20px;
-  color: #f6f9ff;
-  font-weight: 600;
+/* Text inputs */
+/* .inputField {
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  border: 2px solid #00e4ff;
+  background: #061b38;
+  color: #fff;
+  font-size: 14px;
 }
-
-/* --- Inputs --- */
-/* Primary input style (use className="inputField" on inputs) */
+.inputField:focus {
+  outline: none;
+  box-shadow: 0 0 8px #00e4ff;
+} */
 .inputField {
   width: 100%;
   padding: 14px;
   margin-bottom: 15px;
   border-radius: 6px;
   border: 2px solid #00e4ff;
-  background: #ffffff; /* white inside so typed text is visible */
-  color: #000000; /* black typed text */
+  background: #ffffff; /* ✅ white background inside the input */
+  color: #000000; /* ✅ black text while typing */
   font-size: 14px;
-  box-sizing: border-box;
-  transition: box-shadow 160ms ease, transform 120ms ease;
 }
-
-/* Placeholder color */
 .inputField::placeholder {
-  color: #6b6b6b;
-  opacity: 1;
+  color: #555; /* ✅ slightly gray placeholder for readability */
 }
-
-/* Focus style */
 .inputField:focus {
   outline: none;
-  box-shadow: 0 0 12px #00e4ff;
-  transform: translateY(-1px);
+  box-shadow: 0 0 8px #00e4ff;
 }
 
-/* Defensive rule: if an input does NOT have the class, still apply safe readable colors */
-.login-card input,
-.login-card textarea {
-  background: #ffffff !important;
-  color: #000000 !important;
-  caret-color: #000000 !important;
-}
-
-/* Autofill fixes for Chrome/WebKit */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
-  -webkit-text-fill-color: #000000 !important;
-  caret-color: #000000 !important;
-}
-
-/* --- Buttons (glowy) --- */
+/* Glow buttons */
 .login-btn,
 .signup-btn {
   padding: 14px;
@@ -132,19 +103,12 @@ input:-webkit-autofill:focus {
   border: none;
   cursor: pointer;
   border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 228, 255, 0.25);
+  box-shadow: 0 0 14px #00e4ff;
   background: linear-gradient(90deg, #00e4ff, #1b5bff);
   color: #031b39;
   font-weight: bold;
-  transition: transform 120ms ease, box-shadow 120ms ease;
-}
-.login-btn:hover,
-.signup-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(0, 228, 255, 0.35);
 }
 
-/* --- small links & errors --- */
 .signup-link {
   color: #00e4ff;
   cursor: pointer;
@@ -152,27 +116,26 @@ input:-webkit-autofill:focus {
   display: inline-block;
   margin-top: 12px;
 }
+
 .error {
   color: #ff004f;
   margin-bottom: 12px;
   font-size: 13px;
 }
-
-/* --- password eye icon container --- */
 .password-wrapper {
   position: relative;
 }
+
 .eye-icon {
   position: absolute;
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
   font-size: 20px;
-  color: #00e4ff;
+  color: #00e4ff; /* light gaming color */
   cursor: pointer;
 }
 
-/* GitHub auth button */
 .github-btn {
   background-color: #24292f;
   color: white;
@@ -183,49 +146,9 @@ input:-webkit-autofill:focus {
   cursor: pointer;
   width: 100%;
   margin-top: 15px;
-  transition: background 0.3s, transform 0.12s;
+  transition: background 0.3s;
 }
+
 .github-btn:hover {
-  background-color: #111318;
-  transform: translateY(-2px);
-}
-
-/* --- Responsive tweaks --- */
-@media (max-width: 420px) {
-  .login-card {
-    width: 92%;
-    padding: 28px 20px;
-  }
-  .logoHeading {
-    font-size: 18px;
-  }
-  .inputField {
-    padding: 12px;
-  }
-}
-
-/* --- Small layout helpers to match your markup --- */
-.login-section .login-card form {
-  display: block;
-}
-.login-card p.signup-info {
-  margin-top: 18px;
-  color: #dff6ff;
-  font-size: 14px;
-}
-.login-card a {
-  color: #00e4ff;
-}
-
-/* --- Extra: ensure headings inside card are visible if your markup lacks .login-title --- */
-.login-card h3,
-.login-card h2 {
-  color: #f6f9ff;
-  margin: 0 0 12px;
-}
-
-/* --- Accessibility: focus-visible outline --- */
-.inputField:focus-visible {
-  outline: 3px solid rgba(0, 228, 255, 0.15);
-  outline-offset: 2px;
+  background-color: #000;
 }
