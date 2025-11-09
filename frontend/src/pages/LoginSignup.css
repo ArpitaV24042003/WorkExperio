@@ -135,3 +135,22 @@
 .github-btn:hover {
   background-color: #000;
 }
+
+/* Make input text and placeholder black */
+input {
+  color: black; /* 👈 Text typed by user */
+  background-color: white; /* Optional, ensures visible background */
+  border: 1px solid #ccc; /* Optional, for clarity */
+  padding: 8px;
+  border-radius: 5px;
+  outline: none;
+}
+
+input::placeholder {
+  color: #666; /* 👈 Placeholder color (optional) */
+}
+
+/* On focus */
+input:focus {
+  border-color: #007bff; /* Blue outline */
+}
