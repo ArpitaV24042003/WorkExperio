@@ -38,7 +38,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # temporary, for testing Swagger + ML + frontend
+    allow_origins=[
+            "https://workexperio-4.onrender.com",
+            "https://workexperio-3.onrender.com",   # optional chat frontend
+            "https://workexperio-2.onrender.com"  
+    ],  # temporary, for testing Swagger + ML + frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -90,14 +94,17 @@ def check_db_tables():
         return {"error": "Failed to connect or query database", "details": str(e)}
 
 # --- Include Routers ---
+app.include_router(auth_router.router, prefix="/auth", tags=["Auth"])
+app.include_router(ai_router.router, prefix="/ai", tags=["AI"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
 app.include_router(mongo_routes.router, prefix="/mongo", tags=["MongoDB"])
 app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
 app.include_router(teams.router, prefix="/teams", tags=["Teams"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
-app.include_router(ai_router.router)
-app.include_router(auth_router.router) 
+
+
+ 
 
 # --- Create tables if they don’t exist ---
 print("Creating database tables (if not exist)...")
