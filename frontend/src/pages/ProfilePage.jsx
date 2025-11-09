@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import "./LoginSignup.css";
 import { apiRequest } from "../api";
+import { aiParseResume } from "../ai";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
@@ -56,11 +57,8 @@ export default function ProfilePage() {
     setResumeFile(file);
     setLoading(true);
     setApiError(null);
-
     try {
-      const formData = new FormData();
-      formData.append("resume", file);
-      const data = await apiRequest("/resumes/parse", "POST", formData);
+      const data = await aiParseResume(file);
       setParsedResume(data);
     } catch (err) {
       setApiError(
@@ -71,26 +69,21 @@ export default function ProfilePage() {
     }
   };
 
+  // ✅ Save everything back to backend
   const handleSave = async () => {
     setSaving(true);
     setApiError(null);
     try {
       const payload = {
         ...profile,
-        resume: resumeFile?.name,
+        resumeFilename: resumeFile?.name,
         resumeParsed: {
           skills: parsedResume?.skills,
           sections: parsedResume?.sections,
           entities: parsedResume?.entities,
         },
       };
-      const updated = await apiRequest("/users/me", "PATCH", payload);
-      setProfile({
-        name: updated.name || profile.name,
-        email: updated.email || profile.email,
-        phone: updated.phone || profile.phone,
-        linkedIn: updated.linkedIn || updated.linkedin || profile.linkedIn,
-      });
+      await apiRequest("/users/me", "PATCH", payload);
       alert("Profile saved!");
     } catch (err) {
       setApiError(err?.message || "Failed to save profile");
