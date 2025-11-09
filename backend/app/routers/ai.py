@@ -3,7 +3,8 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.utils.ai_client import ai_generate_team, ai_predict_performance, ai_parse_resume
 
-router = APIRouter(prefix="/ai", tags=["AI"])
+router = APIRouter()
+
 
 @router.post("/generate-team")
 def generate_team(payload: dict):

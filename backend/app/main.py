@@ -7,7 +7,7 @@ from app.database import engine, Base
 import app.models
 from .routers import ai as ai_router
 from .routers import auth as auth_router  
-
+from app.routers import users, resumes, mongo_routes, chatbot, teams, projects
 # --- Debugging: Print database URL ---
 print("=" * 60)
 print(f"DATABASE URL AT RUNTIME: {os.getenv('DATABASE_URL')}")
@@ -16,15 +16,7 @@ print("=" * 60)
 # --- Add app folder to sys.path ---
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# --- Import routers ---
-from app.routers import (
-    users,
-    resumes,
-    mongo_routes,
-    chatbot,
-    teams,
-    projects,
-)
+
 
 # --- Initialize FastAPI App ---
 app = FastAPI(
@@ -47,26 +39,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Define your specific origins
-# origins = [
-#     "https://workexperio.onrender.com",         # Your main frontend
-#     "https://workexperio-backend.onrender.com", # Your backend (for the docs)
-#     "http://127.0.0.1:8000",                   # Local dev
-#     "http://localhost:8000",                    # Local dev
-#     "http://localhost:5173",                    # Default Vite/React dev port (if you use it)
-# ]
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,  # <-- USE THE SPECIFIC LIST
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-
-
 
 # --- Root Endpoint ---
 @app.get("/")
