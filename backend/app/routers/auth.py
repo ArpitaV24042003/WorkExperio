@@ -11,13 +11,13 @@ from app.database import SessionLocal
 from app.models import User  # ensure User model has github_id, avatar_url, auth_provider, password nullable
 
 # --- router must be defined before decorators are used ---
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter()
 
 # ---------- Env / Defaults ----------
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")  # change to your frontend prod URL
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://workexperio.onrender.com")
+FRONTEND_URL = os.getenv("FRONTEND_URL","https://workexperio-4.onrender.com")  # change to your frontend prod URL
 
 # Starlette Config for Authlib (we pass env via the Config's environ dict)
 config = Config(environ={

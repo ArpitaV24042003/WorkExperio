@@ -5,9 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from app.database import engine, Base
 import app.models
-from .routers import ai as ai_router
-from .routers import auth as auth_router  
-from app.routers import users, resumes, mongo_routes, chatbot, teams, projects
+from app.routers import  auth as auth_router,ai as ai_router,users, resumes, mongo_routes, chatbot, teams, projects
 # --- Debugging: Print database URL ---
 print("=" * 60)
 print(f"DATABASE URL AT RUNTIME: {os.getenv('DATABASE_URL')}")
@@ -22,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 app = FastAPI(
     title="WorkExperio API",
     version="1.0.0",
+    description="Backend for WorkExperio project",
     servers=[
         {"url": "https://workexperio-backend.onrender.com", "description": "Render (Production)"},
         {"url": "http://127.0.0.1:8000", "description": "Local (Development)"}
@@ -31,6 +30,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "*",
             "https://workexperio-4.onrender.com",
             "https://workexperio-3.onrender.com",   # optional chat frontend
             "https://workexperio-2.onrender.com"  
@@ -39,6 +39,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Include Routers ---
+app.include_router(auth_router.router, prefix="/auth", tags=["Auth"])
+app.include_router(ai_router.router, prefix="/ai", tags=["AI"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
+app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
+app.include_router(mongo_routes.router, prefix="/mongo", tags=["MongoDB"])
+app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
+app.include_router(teams.router, prefix="/teams", tags=["Teams"])
+app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 
 # --- Root Endpoint ---
 @app.get("/")
@@ -65,18 +76,6 @@ def check_db_tables():
     except Exception as e:
         return {"error": "Failed to connect or query database", "details": str(e)}
 
-# --- Include Routers ---
-app.include_router(auth_router.router, prefix="/auth", tags=["Auth"])
-app.include_router(ai_router.router, prefix="/ai", tags=["AI"])
-app.include_router(users.router, prefix="/users", tags=["Users"])
-app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
-app.include_router(mongo_routes.router, prefix="/mongo", tags=["MongoDB"])
-app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
-app.include_router(teams.router, prefix="/teams", tags=["Teams"])
-app.include_router(projects.router, prefix="/projects", tags=["Projects"])
-
-
- 
 
 # --- Create tables if they don’t exist ---
 print("Creating database tables (if not exist)...")
