@@ -1,11 +1,11 @@
 .web-wrapper {
   min-height: 100vh;
   background: radial-gradient(circle at top, #103c75, #000428 70%);
-  font-family: "Press Start 2P", sans-serif; /* optional pixel font */
+  font-family: "Press Start 2P", sans-serif;
   color: #f0f0f0;
 }
 
-/* Top gaming bar */
+/* Top bar */
 .topbar {
   padding: 15px 30px;
   background: #031b39;
@@ -21,7 +21,7 @@
   text-shadow: 0 0 8px #00e4ff;
   display: flex;
   align-items: center;
-  font-style: italic; /* NEW */
+  font-style: italic;
 }
 
 .circleLogo {
@@ -60,40 +60,26 @@
   text-align: center;
 }
 
-/* Text inputs */
-/* .inputField {
-  width: 100%;
-  padding: 14px;
-  margin-bottom: 15px;
-  border-radius: 6px;
-  border: 2px solid #00e4ff;
-  background: #061b38;
-  color: #fff;
-  font-size: 14px;
-}
-.inputField:focus {
-  outline: none;
-  box-shadow: 0 0 8px #00e4ff;
-} */
+/* Inputs – readable text */
 .inputField {
   width: 100%;
   padding: 14px;
   margin-bottom: 15px;
   border-radius: 6px;
   border: 2px solid #00e4ff;
-  background: #ffffff; /* ✅ white background inside the input */
-  color: #000000; /* ✅ black text while typing */
+  background: #ffffff; /* white background */
+  color: #000000; /* black text */
   font-size: 14px;
 }
 .inputField::placeholder {
-  color: #555; /* ✅ slightly gray placeholder for readability */
+  color: #555;
 }
 .inputField:focus {
   outline: none;
   box-shadow: 0 0 8px #00e4ff;
 }
 
-/* Glow buttons */
+/* Buttons */
 .login-btn,
 .signup-btn {
   padding: 14px;
@@ -122,20 +108,28 @@
   margin-bottom: 12px;
   font-size: 13px;
 }
+
+/* 👁️ Password toggle */
 .password-wrapper {
   position: relative;
 }
-
 .eye-icon {
   position: absolute;
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
   font-size: 20px;
-  color: #00e4ff; /* light gaming color */
+  color: #00e4ff;
   cursor: pointer;
+  background: transparent;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
+/* Optional GitHub button if you bring it back */
 .github-btn {
   background-color: #24292f;
   color: white;
@@ -148,7 +142,6 @@
   margin-top: 15px;
   transition: background 0.3s;
 }
-
 .github-btn:hover {
   background-color: #000;
 }

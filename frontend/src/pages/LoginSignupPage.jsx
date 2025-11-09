@@ -1,94 +1,20 @@
-// import { useState } from "react";
-// import { Link } from "react-router-dom";
-// import "./LoginSignup.css";
-// import { apiRequest } from "../api";
-
-// export default function LoginSignupPage() {
-//   const [isSignup, setIsSignup] = useState(false);
-
-//   // const handleGitHubAuth = () => {
-//   //   // redirect to your backend’s GitHub authentication route:
-//   //   window.location.href = "/api/auth/github";
-//   // };
-//   const handleGitHubAuth = () => {
-//     const backendUrl =
-//       import.meta.env.VITE_API_URL || "https://workexperio.onrender.com";
-//     // Redirect user to backend's GitHub login endpoint
-//     window.location.href = `${backendUrl}/auth/github/login`;
-//   };
-
-//   return (
-//     <div className="web-wrapper">
-//       <nav className="topbar">
-//         <h2 className="logoHeading">
-//           <span className="circleLogo">w</span> <i>WorkExperio</i>
-//         </h2>
-//         <Link to="/" className="nav-link">
-//           Home
-//         </Link>
-//       </nav>
-
-//       <section className="login-section">
-//         <div className="login-card">
-//           {!isSignup ? (
-//             <>
-//               <h3 className="login-title">Log In</h3>
-//               {/* <button className="login-btn" onClick={handleGitHubAuth}>
-//                 Continue with GitHub
-//               </button> */}
-//               <button
-//                 className="login-btn"
-//                 onClick={() => {
-//                   alert("Redirecting to GitHub...");
-//                   handleGitHubAuth();
-//                 }}
-//               >
-//                 Continue with GitHub
-//               </button>
-//               <p className="signup-info">
-//                 New here?{" "}
-//                 <span className="signup-link" onClick={() => setIsSignup(true)}>
-//                   Create account
-//                 </span>
-//               </p>
-//             </>
-//           ) : (
-//             <>
-//               <h3 className="login-title">Sign Up</h3>
-//               <button className="signup-btn" onClick={handleGitHubAuth}>
-//                 Continue with GitHub
-//               </button>
-//               <p className="signup-info">
-//                 Already have an account?{" "}
-//                 <span
-//                   className="signup-link"
-//                   onClick={() => setIsSignup(false)}
-//                 >
-//                   Log In
-//                 </span>
-//               </p>
-//             </>
-//           )}
-//         </div>
-//       </section>
-//     </div>
-//   );
-// }
-
-// src/pages/LoginSignupPage.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
 import { apiRequest } from "../api";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginSignupPage() {
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
+  // If your apiRequest already sets the base URL, you can remove this.
   const backendUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  void backendUrl; // avoid unused var if not used directly
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -97,16 +23,18 @@ export default function LoginSignupPage() {
         await apiRequest("/users/register", "POST", { name, email, password });
         alert("Signup successful! Please log in.");
         setIsSignup(false);
+        setPassword("");
       } else {
         const data = await apiRequest("/users/login", "POST", {
           email,
           password,
         });
         localStorage.setItem("user", JSON.stringify(data));
-        navigate("/dashboard"); // or "/project-dashboard"
+        localStorage.setItem("lastLogin", new Date().toISOString());
+        navigate("/dashboard");
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      alert("Error: " + (err?.message || "Something went wrong"));
     }
   };
 
@@ -124,30 +52,51 @@ export default function LoginSignupPage() {
       <section className="login-section">
         <div className="login-card">
           <h3 className="login-title">{isSignup ? "Sign Up" : "Log In"}</h3>
+
           <form onSubmit={handleSubmit}>
             {isSignup && (
               <input
+                className="inputField"
                 type="text"
                 placeholder="Full name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="name"
               />
             )}
+
             <input
+              className="inputField"
               type="email"
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="email"
             />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+
+            <div className="password-wrapper">
+              <input
+                className="inputField"
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete={isSignup ? "new-password" : "current-password"}
+              />
+              <button
+                type="button"
+                className="eye-icon"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((s) => !s)}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+
             <button type="submit" className="login-btn">
               {isSignup ? "Sign Up" : "Log In"}
             </button>
