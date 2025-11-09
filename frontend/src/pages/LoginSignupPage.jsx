@@ -11,7 +11,9 @@ export default function LoginSignupPage() {
   //   window.location.href = "/api/auth/github";
   // };
   const handleGitHubAuth = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL}/auth/github/login`;
+    const backendUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+    // Redirect user to backend's GitHub login endpoint
+    window.location.href = `${backendUrl}/auth/github/login`;
   };
 
   return (
@@ -30,7 +32,16 @@ export default function LoginSignupPage() {
           {!isSignup ? (
             <>
               <h3 className="login-title">Log In</h3>
-              <button className="login-btn" onClick={handleGitHubAuth}>
+              {/* <button className="login-btn" onClick={handleGitHubAuth}>
+                Continue with GitHub
+              </button> */}
+              <button
+                className="login-btn"
+                onClick={() => {
+                  alert("Redirecting to GitHub...");
+                  handleGitHubAuth();
+                }}
+              >
                 Continue with GitHub
               </button>
               <p className="signup-info">
