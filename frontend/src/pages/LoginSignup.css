@@ -51,8 +51,7 @@
 }
 
 .login-card {
-  color: black;
-  background: rgb(252, 253, 253);
+  background: rgba(3, 27, 57, 0.8);
   border: 2px solid #00e4ff;
   box-shadow: 0 0 25px #00e4ff;
   padding: 50px 40px;
@@ -62,7 +61,7 @@
 }
 
 /* Text inputs */
-.inputField {
+/* .inputField {
   width: 100%;
   padding: 14px;
   margin-bottom: 15px;
@@ -71,6 +70,23 @@
   background: #061b38;
   color: #fff;
   font-size: 14px;
+}
+.inputField:focus {
+  outline: none;
+  box-shadow: 0 0 8px #00e4ff;
+} */
+.inputField {
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  border: 2px solid #00e4ff;
+  background: #ffffff; /* ✅ white background inside the input */
+  color: #000000; /* ✅ black text while typing */
+  font-size: 14px;
+}
+.inputField::placeholder {
+  color: #555; /* ✅ slightly gray placeholder for readability */
 }
 .inputField:focus {
   outline: none;
