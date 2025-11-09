@@ -27,6 +27,15 @@ app = FastAPI(
     ]
 )
 
+SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-me")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="session",      # Default name used by Authlib/Starlette
+    max_age=14 * 24 * 60 * 60,     # 14 days (seconds)
+    same_site="lax",               # Recommended for OAuth redirects
+    https_only=True                # True for production (HTTPS only)
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
