@@ -8,8 +8,8 @@ from datetime import datetime
 # ---------------------------
 load_dotenv()
 
-MONGO_URL = os.getenv("MONGODB_URL")
-MONGO_DB_NAME = os.getenv("MONGODB_DB")
+MONGO_URL = os.getenv("MONGO_URL")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 
 # ---------------------------
 # Connect to MongoDB
