@@ -1,8 +1,8 @@
 // src/api.js
 
 // ---- BASE URL ----
-const RAW_BASE =
-  import.meta.env?.VITE_API_URL || "https://workexperio.onrender.com";
+// FIX: Replaced import.meta.env with process.env to avoid es2015 build warning
+const RAW_BASE = process.env.VITE_API_URL || "https://workexperio.onrender.com";
 // normalize (strip trailing slashes)
 const BASE_URL = RAW_BASE.replace(/\/+$/, "");
 
@@ -80,19 +80,29 @@ export async function apiRequest(
     ...(extra.headers || {}),
   };
 
-  // Optional: attach Bearer token from localStorage
+  // --- LOGIC FIX BLOCK ---
+  // Attach Bearer token from localStorage
   try {
-    const stored = localStorage.getItem("user");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      const token = parsed?.token || parsed?.accessToken;
-      if (token && !headers.Authorization) {
-        headers.Authorization = `Bearer ${token}`;
+    // First, check for the standalone token (from LoginSignupPage.jsx)
+    let token = localStorage.getItem("token");
+
+    // If not found, check inside the user object as a fallback
+    if (!token) {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        token = parsedUser?.token || parsedUser?.accessToken;
       }
+    }
+
+    // If we found a token one way or another, add it to the header
+    if (token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${token}`;
     }
   } catch {
     // ignore malformed storage
   }
+  // --- END OF LOGIC FIX BLOCK ---
 
   const timeoutMs = Number.isFinite(extra.timeoutMs) ? extra.timeoutMs : 45000; // 45s (cold start friendly)
   const retries = Number.isFinite(extra.retries) ? extra.retries : 2;
