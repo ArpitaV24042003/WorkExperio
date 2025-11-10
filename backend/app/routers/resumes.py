@@ -1,17 +1,16 @@
-# app/routers/resumes.py
+import httpx
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from fastapi import Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
 from app.mongo import resume_raw, resume_parsed, mongo_db
-import tempfile, os
+import tempfile
+import os
 import json
 from app.routers.users import get_current_user
 
-# Import your resume parsing function
-# You said you uploaded resume_parsing.py earlier; it must expose parse_resume(path) -> dict
-from app import resume_parsing
+# Note: Removed the broken local import for 'resume_parsing'
 
 router = APIRouter()
 
@@ -20,11 +19,13 @@ router = APIRouter()
 async def parse_resume_endpoint(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
+    
     suffix = os.path.splitext(file.filename)[1].lower()
     tmpdir = tempfile.mkdtemp()
     path = os.path.join(tmpdir, file.filename)
+    
+    content = await file.read()
     with open(path, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     # Save raw text/binary to Mongo raw collection
@@ -34,7 +35,7 @@ async def parse_resume_endpoint(file: UploadFile = File(...), db: Session = Depe
         "uploaded_by": current_user.id,
         "uploaded_at": mongo_db.system_js and None,
     }
-    # Ideally you'd extract text; for now save file bytes in GridFS or metadata. We'll save metadata + small stored text if small
+    
     try:
         raw_doc["size"] = len(content)
     except Exception:
@@ -43,16 +44,54 @@ async def parse_resume_endpoint(file: UploadFile = File(...), db: Session = Depe
     # insert metadata
     raw_res = resume_raw.insert_one(raw_doc)
 
-    # Call your parsing function (should return dict). Wrap with try/catch
+    # --- MODIFIED BLOCK: Call AI Service instead of local function ---
+    
+    # Get AI Service URL from environment variables
+    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")
+    if not AI_SERVICE_URL:
+        # This is a server configuration error
+        raise HTTPException(status_code=500, detail="AI_SERVICE_URL is not set")
+
+    # Define the endpoint on your AI service
+    # IMPORTANT: You must create this endpoint (e.g., /parse-resume) in your ai_service project
+    parse_endpoint = f"{AI_SERVICE_URL}/parse-resume"
+    
+    files_to_send = {'file': (file.filename, content, file.content_type)}
+    
     try:
-        parsed = resume_parsing.parse_resume(path)
+        # Call your external AI service
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(parse_endpoint, files=files_to_send)
+            
+            # Raise an exception if the AI service returned an error (4xx or 5xx)
+            response.raise_for_status() 
+            
+            # Get the parsed JSON data from the response
+            parsed = response.json() 
+
+    except httpx.RequestError as e:
+        # Network error, AI service is down or unreachable
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail=f"AI service connection error: {str(e)}")
+    except httpx.HTTPStatusError as e:
+        # AI service returned a non-200 status code
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=e.response.status_code, detail=f"AI service returned error: {e.response.text}")
     except Exception as e:
-        # cleanup then return error
+        # Other unexpected errors (e.g., JSON decode error if AI service response is malformed)
         try:
             os.remove(path)
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"Resume parsing failed: {str(e)}")
+    
+    # --- END OF MODIFIED BLOCK ---
 
     # store parsed output in mongo
     parsed_doc = {
