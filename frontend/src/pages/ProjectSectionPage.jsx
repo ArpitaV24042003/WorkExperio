@@ -31,6 +31,7 @@ export default function ProjectSectionPage() {
     return () => (ignore = true);
   }, []);
 
+  // inside ProjectSectionPage.jsx: replace handleAddProject
   const handleAddProject = async () => {
     if (!newProject.domain || !newProject.skillLevel) {
       alert("Please choose both domain and skill level.");
@@ -48,21 +49,27 @@ export default function ProjectSectionPage() {
         teammates: [],
       });
 
-      // 2) Save project to DB
-      const saved = await apiRequest("/projects", "POST", {
+      // 2) Decide teamPending / solo logic here (simple heuristic: let backend decide)
+      const shouldMarkPending = false; // you can toggle based on your team-formation result
+      const payload = {
         name: `${newProject.domain} Project`,
         domain: newProject.domain,
         skillLevel: newProject.skillLevel,
         teammates: [],
         aiPlan,
         phase: "Phase 1 — Planning",
-      });
+        teamPending: shouldMarkPending,
+        teamPendingUntil: shouldMarkPending
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          : null,
+        soloAssigned: !shouldMarkPending,
+      };
 
-      // 3) Navigate to its page
+      const saved = await apiRequest("/projects", "POST", payload);
+
       if (saved?.id) {
         navigate(`/projects/${saved.id}`);
       } else {
-        // refresh list and close
         const list = await apiRequest("/projects?mine=true");
         setProjects(Array.isArray(list) ? list : []);
         setShowOverlay(false);

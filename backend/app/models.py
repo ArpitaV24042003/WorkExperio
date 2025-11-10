@@ -1,6 +1,15 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Boolean, Table
+# app/models.py
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    Text,
+    DateTime,
+    Boolean,
+    Table,
+)
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -8,7 +17,6 @@ from .database import Base
 # Many-to-Many Relationships
 # -------------------------
 
-# Links a User to their many Skills
 user_skill = Table(
     "user_skill",
     Base.metadata,
@@ -16,7 +24,6 @@ user_skill = Table(
     Column("skill_id", Integer, ForeignKey("skills.id"), primary_key=True),
 )
 
-# Links a Team to its many User members
 team_member = Table(
     "team_member",
     Base.metadata,
@@ -24,7 +31,6 @@ team_member = Table(
     Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
 )
 
-# NEW: Links a Role to its required Skills (for team_formation.py)
 role_skill = Table(
     "role_skill",
     Base.metadata,
@@ -36,21 +42,24 @@ role_skill = Table(
 # -------------------------
 # Core Models
 # -------------------------
-
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
     email = Column(String(100), unique=True, index=True)
-    password = Column(String, nullable=True)  # ← now optional
+    password = Column(String, nullable=True)
 
-    # --- OAuth Fields ---
     github_id = Column(String(50), unique=True, nullable=True)
     avatar_url = Column(String(255), nullable=True)
-    auth_provider = Column(String(50), default="local")  # e.g. 'local' or 'github'
+    auth_provider = Column(String(50), default="local")
 
-    # --- Existing relationships ---
+    # Onboarding / resume flags used by frontend
+    profile_complete = Column(Boolean, default=False, nullable=False)
+    parsed_resume_mongo_id = Column(String(100), nullable=True)
+    # A compact summary of parsed resume (JSON string) for quick frontend checks
+    parsed_resume_summary = Column(Text, nullable=True)
+
     resumes = relationship("Resume", back_populates="user")
     skills = relationship("Skill", secondary=user_skill, back_populates="users")
     phones = relationship("Phone", back_populates="user", cascade="all, delete-orphan")
@@ -67,14 +76,13 @@ class User(Base):
     preferred_domain = relationship("Domain")
 
 
-
 class Resume(Base):
     __tablename__ = "resumes"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     file_url = Column(String(255))
-    parsed_mongo_id = Column(String(50))  # Reference to Mongo resume_parsed _id
+    parsed_mongo_id = Column(String(100))  # Reference to resume_parsed _id in MongoDB
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     manual_additions = Column(Text, nullable=True)
     is_verified = Column(Boolean, default=False)
@@ -89,13 +97,8 @@ class Skill(Base):
     name = Column(String(100), unique=True)
 
     users = relationship("User", secondary=user_skill, back_populates="skills")
-    # NEW: Link skills to roles that require them
     roles = relationship("Role", secondary=role_skill, back_populates="required_skills")
 
-
-# -------------------------
-# Supporting Resume Tables
-# -------------------------
 
 class Phone(Base):
     __tablename__ = "phones"
@@ -153,6 +156,12 @@ class Project(Base):
     technologies = Column(Text)
     user_id = Column(Integer, ForeignKey("users.id"))
 
+    # Additional fields to support teamPending / solo flow (for individual projects)
+    team_pending = Column(Boolean, default=False)
+    team_pending_until = Column(DateTime(timezone=True), nullable=True)
+    solo_assigned = Column(Boolean, default=False)
+    status = Column(String(50), default="draft")  # e.g., draft, team_pending, active, completed
+
     user = relationship("User", back_populates="projects")
 
 
@@ -168,43 +177,38 @@ class Certificate(Base):
     user = relationship("User", back_populates="certificates")
 
 
-# ---------------------------------
-# NEW: Domain/Role Config Models
-# (Replaces hardcoded DOMAIN_CONFIG)
-# ---------------------------------
-
+# Domain / Role models (unchanged)
 class Domain(Base):
     __tablename__ = "domains"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), unique=True, index=True) # e.g., "Frontend Development"
+    name = Column(String(100), unique=True, index=True)
     description = Column(Text, nullable=True)
-    
+
     roles = relationship("Role", back_populates="domain")
     role_templates = relationship("DomainRoleTemplate", back_populates="domain")
+
 
 class Role(Base):
     __tablename__ = "roles"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100), index=True) # e.g., "Frontend Developer"
+    name = Column(String(100), index=True)
     domain_id = Column(Integer, ForeignKey("domains.id"))
 
     domain = relationship("Domain", back_populates="roles")
     required_skills = relationship("Skill", secondary=role_skill, back_populates="roles")
     domain_templates = relationship("DomainRoleTemplate", back_populates="role")
 
+
 class DomainRoleTemplate(Base):
     __tablename__ = "domain_role_templates"
     id = Column(Integer, primary_key=True, index=True)
     domain_id = Column(Integer, ForeignKey("domains.id"))
     role_id = Column(Integer, ForeignKey("roles.id"))
-    default_count = Column(Integer, nullable=False) # The "default_count" from your script
+    default_count = Column(Integer, nullable=False)
 
     domain = relationship("Domain", back_populates="role_templates")
     role = relationship("Role", back_populates="domain_templates")
 
-# -------------------------
-# Team & Project Management
-# -------------------------
 
 class Team(Base):
     __tablename__ = "teams"
@@ -213,54 +217,52 @@ class Team(Base):
     name = Column(String(100))
 
     members = relationship("User", secondary=team_member, back_populates="teams")
-    # UPDATED: Renamed relation
     projects = relationship("TeamProject", back_populates="team")
-    # NEW: Link to the team's dedicated chat room
     chat_room = relationship("ChatRoom", back_populates="team", uselist=False, cascade="all, delete-orphan")
 
 
-# UPDATED: Renamed from ProjectAssignment to TeamProject for clarity
 class TeamProject(Base):
-    __tablename__ = "team_projects" # Was "project_assignments"
+    __tablename__ = "team_projects"
 
     id = Column(Integer, primary_key=True, index=True)
     project_name = Column(String(255))
     description = Column(Text)
     team_id = Column(Integer, ForeignKey("teams.id"))
-    
-    # NEW: Store the output from team_ps_selection.py
-    project_plan_json = Column(Text, nullable=True) # Stores the large generated JSON
-    status = Column(String(50), default="Planning") # e.g., Planning, In-Progress, Completed
+
+    project_plan_json = Column(Text, nullable=True)
+    status = Column(String(50), default="Planning")
     start_date = Column(DateTime(timezone=True), nullable=True)
     end_date = Column(DateTime(timezone=True), nullable=True)
+
+    # New fields to track pending / solo assignment
+    team_pending = Column(Boolean, default=False)
+    team_pending_until = Column(DateTime(timezone=True), nullable=True)
+    solo_assigned = Column(Boolean, default=False)
 
     team = relationship("Team", back_populates="projects")
 
 
-# -------------------------
-# NEW: Chat Models
-# -------------------------
-
 class ChatRoom(Base):
     __tablename__ = "chat_rooms"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
-    team_id = Column(Integer, ForeignKey("teams.id"), unique=True) # One room per team
+    team_id = Column(Integer, ForeignKey("teams.id"), unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     team = relationship("Team", back_populates="chat_room")
     messages = relationship("ChatMessage", back_populates="room", cascade="all, delete-orphan")
 
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-    
-    user_id = Column(Integer, ForeignKey("users.id")) # Who sent it
-    room_id = Column(Integer, ForeignKey("chat_rooms.id")) # In which room
-    
+
+    user_id = Column(Integer, ForeignKey("users.id"))
+    room_id = Column(Integer, ForeignKey("chat_rooms.id"))
+
     user = relationship("User", back_populates="chat_messages")
     room = relationship("ChatRoom", back_populates="messages")

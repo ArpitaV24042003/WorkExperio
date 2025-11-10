@@ -1,10 +1,17 @@
+// ProfilePage.jsx (replace entire file with this)
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import "./LoginSignup.css";
 import { apiRequest } from "../api";
 import { aiParseResume } from "../ai";
+import { useNavigate, useLocation } from "react-router-dom";
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const search = new URLSearchParams(location.search);
+  const firstTime = !!search.get("firstTime"); // true if onboarding
+
   const [loading, setLoading] = useState(false);
   const [resumeFile, setResumeFile] = useState(null);
   const [parsedResume, setParsedResume] = useState(null);
@@ -58,6 +65,7 @@ export default function ProfilePage() {
     setLoading(true);
     setApiError(null);
     try {
+      // aiParseResume should accept a File/Blob and return structured JSON { skills:[], sections:{}, entities:{} }
       const data = await aiParseResume(file);
       setParsedResume(data);
     } catch (err) {
@@ -69,7 +77,6 @@ export default function ProfilePage() {
     }
   };
 
-  // ✅ Save everything back to backend
   const handleSave = async () => {
     setSaving(true);
     setApiError(null);
@@ -78,13 +85,27 @@ export default function ProfilePage() {
         ...profile,
         resumeFilename: resumeFile?.name,
         resumeParsed: {
-          skills: parsedResume?.skills,
-          sections: parsedResume?.sections,
-          entities: parsedResume?.entities,
+          skills: parsedResume?.skills || [],
+          sections: parsedResume?.sections || {},
+          entities: parsedResume?.entities || {},
         },
+        profileComplete: true,
       };
-      await apiRequest("/users/me", "PATCH", payload);
+      const updated = await apiRequest("/users/me", "PATCH", payload);
+      // update localStorage user copy (if any)
+      try {
+        const stored = JSON.parse(localStorage.getItem("user") || "{}");
+        const merged = { ...(stored || {}), ...updated };
+        localStorage.setItem("user", JSON.stringify(merged));
+      } catch (e) {
+        /* ignore */
+      }
+
       alert("Profile saved!");
+      if (firstTime) {
+        // Continue onboarding -> open New Project flow
+        navigate("/projects/new-flow");
+      }
     } catch (err) {
       setApiError(err?.message || "Failed to save profile");
     } finally {
@@ -156,9 +177,9 @@ export default function ProfilePage() {
       <div className="login-section">
         <div
           className="login-card"
-          style={{ maxWidth: "550px", width: "100%" }}
+          style={{ maxWidth: "650px", width: "100%" }}
         >
-          <h2 style={{ marginBottom: "25px" }}>PROFILE</h2>
+          <h2 style={{ marginBottom: "20px" }}>PROFILE</h2>
 
           {apiError && (
             <div className="mb-3 p-2 rounded bg-yellow-100 text-yellow-800">
@@ -261,8 +282,13 @@ export default function ProfilePage() {
             className="login-btn mt-3"
             onClick={handleSave}
             disabled={saving}
+            style={{ width: "100%" }}
           >
-            {saving ? "Saving..." : "SAVE PROFILE"}
+            {saving
+              ? "Saving..."
+              : firstTime
+              ? "Save & Continue"
+              : "SAVE PROFILE"}
           </button>
         </div>
       </div>

@@ -10,6 +10,8 @@ export default function LoginSignupPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
 
   // If your apiRequest already sets the base URL, you can remove this.
@@ -18,23 +20,72 @@ export default function LoginSignupPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg("");
+    setLoading(true);
+
     try {
       if (isSignup) {
+        // Register user
         await apiRequest("/users/register", "POST", { name, email, password });
         alert("Signup successful! Please log in.");
         setIsSignup(false);
         setPassword("");
+        setName("");
+        setEmail("");
+        setLoading(false);
+        return;
+      }
+
+      // LOGIN
+      const data = await apiRequest("/users/login", "POST", { email, password });
+
+      // Accept several possible shapes:
+      // 1) { token: "...", user: { ... } }
+      // 2) { user: { ... } }
+      // 3) { id, name, email, ... } (user directly)
+      const token = data?.token || data?.accessToken || null;
+      const userObj = data?.user || (data?.id ? data : data);
+
+      // Save token if provided
+      if (token) localStorage.setItem("token", token);
+
+      // Save user info (strip sensitive fields if present)
+      const safeUser = {
+        id: userObj?.id || userObj?._id || null,
+        name: userObj?.name || userObj?.fullName || null,
+        email: userObj?.email || null,
+        resumeParsed: userObj?.resumeParsed ?? null,
+        profileComplete: userObj?.profileComplete ?? null,
+        createdAt: userObj?.createdAt ?? null,
+        // keep the raw object too for flexibility
+        raw: userObj,
+      };
+
+      localStorage.setItem("user", JSON.stringify(safeUser));
+      localStorage.setItem("lastLogin", new Date().toISOString());
+
+      // Decide onboarding vs main dashboard
+      // If profileComplete === false OR resumeParsed is missing/null -> treat as needs onboarding
+      const needsProfile =
+        safeUser.profileComplete === false ||
+        safeUser.profileComplete === null ||
+        !safeUser.resumeParsed;
+
+      if (needsProfile) {
+        // firstTime flag so ProfilePage knows to continue to project flow after save
+        navigate("/profile?firstTime=1");
       } else {
-        const data = await apiRequest("/users/login", "POST", {
-          email,
-          password,
-        });
-        localStorage.setItem("user", JSON.stringify(data));
-        localStorage.setItem("lastLogin", new Date().toISOString());
         navigate("/dashboard");
       }
     } catch (err) {
-      alert("Error: " + (err?.message || "Something went wrong"));
+      // normalize message
+      const message =
+        err?.message ||
+        (err?.error && typeof err.error === "string" ? err.error : null) ||
+        "Something went wrong";
+      setErrorMsg(message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -53,6 +104,12 @@ export default function LoginSignupPage() {
         <div className="login-card">
           <h3 className="login-title">{isSignup ? "Sign Up" : "Log In"}</h3>
 
+          {errorMsg && (
+            <div style={{ color: "#ffbaba", background: "#3a1b1b", padding: 10, borderRadius: 6, marginBottom: 12 }}>
+              {errorMsg}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
             {isSignup && (
               <input
@@ -63,6 +120,7 @@ export default function LoginSignupPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 autoComplete="name"
+                disabled={loading}
               />
             )}
 
@@ -74,6 +132,7 @@ export default function LoginSignupPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              disabled={loading}
             />
 
             <div className="password-wrapper">
@@ -85,6 +144,7 @@ export default function LoginSignupPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete={isSignup ? "new-password" : "current-password"}
+                disabled={loading}
               />
               <button
                 type="button"
@@ -92,13 +152,14 @@ export default function LoginSignupPage() {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 onClick={() => setShowPassword((s) => !s)}
                 title={showPassword ? "Hide password" : "Show password"}
+                disabled={loading}
               >
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
 
-            <button type="submit" className="login-btn">
-              {isSignup ? "Sign Up" : "Log In"}
+            <button type="submit" className="login-btn" disabled={loading}>
+              {loading ? (isSignup ? "Signing up..." : "Logging in...") : isSignup ? "Sign Up" : "Log In"}
             </button>
           </form>
 
@@ -106,7 +167,12 @@ export default function LoginSignupPage() {
             {isSignup ? "Already have an account?" : "New here?"}{" "}
             <span
               className="signup-link"
-              onClick={() => setIsSignup(!isSignup)}
+              onClick={() => {
+                if (loading) return;
+                setIsSignup(!isSignup);
+                setErrorMsg("");
+              }}
+              style={{ cursor: "pointer" }}
             >
               {isSignup ? "Log In" : "Create account"}
             </span>

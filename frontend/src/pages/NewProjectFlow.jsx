@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// NewProjectFlow.jsx (replace file)
+import React, { useEffect, useState } from "react";
 import bg from "../assets/Profilepicture.jpeg";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../api";
@@ -10,7 +11,7 @@ export default function NewProjectFlow() {
   const [flowStep, setFlowStep] = useState("choose_team");
   const [formData, setFormData] = useState({
     domain: "",
-    teammatesRaw: "", // for manual input (emails/ids/names)
+    teammatesRaw: "",
     skillLevel: "",
   });
 
@@ -18,19 +19,26 @@ export default function NewProjectFlow() {
   const [apiError, setApiError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Team formation results (AI)
   const [teamSuggestion, setTeamSuggestion] = useState({
     members: [],
     note: "",
   });
 
-  // Problem statement (PS) selection
-  const [psOptions, setPsOptions] = useState([]); // [{id,title,brief}]
+  const [psOptions, setPsOptions] = useState([]);
   const [recommendedId, setRecommendedId] = useState(null);
   const [selectedPsId, setSelectedPsId] = useState(null);
-
-  // Plan from AI
   const [aiPlan, setAiPlan] = useState(null);
+
+  // read user name from localStorage (or fetch /users/me)
+  const [userName, setUserName] = useState("");
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "{}");
+      setUserName(u?.name || u?.email || "Student");
+    } catch (e) {
+      setUserName("Student");
+    }
+  }, []);
 
   const validateForm = (withTeam) => {
     const n = {};
@@ -41,9 +49,6 @@ export default function NewProjectFlow() {
     return Object.keys(n).length === 0;
   };
 
-  // ---- STEPS ----
-
-  // 1) Manual team → jump to PS selection
   const handleManualTeamSubmit = async () => {
     if (!validateForm(true)) return;
     setTeamSuggestion({
@@ -57,7 +62,6 @@ export default function NewProjectFlow() {
     await doPsSelection();
   };
 
-  // 2) Need a team → AI forms team → then PS selection
   const handleMlTeamSubmit = async () => {
     if (!validateForm(false)) return;
     setLoading(true);
@@ -66,13 +70,19 @@ export default function NewProjectFlow() {
       const out = await aiFormTeam({
         domain: formData.domain,
         skillLevel: formData.skillLevel,
-        seedMembers: [], // you can pass the current user or seeds
+        seedMembers: [], // optionally include current user
       });
-      // expected shape: { members: [{name,email,role,skills:[]}], note?: string }
       setTeamSuggestion({
         members: out?.members || [],
         note: out?.note || "",
       });
+
+      // If AI returned zero members -> show waiting/solo UI
+      if (!out?.members || out.members.length === 0) {
+        setFlowStep("team_pending_options");
+        return;
+      }
+
       await doPsSelection();
     } catch (err) {
       setApiError(err?.message || "Team formation failed.");
@@ -82,7 +92,6 @@ export default function NewProjectFlow() {
     }
   };
 
-  // 3) Get PS options from AI and move to PS selection step
   const doPsSelection = async () => {
     setLoading(true);
     setApiError(null);
@@ -92,7 +101,6 @@ export default function NewProjectFlow() {
         skillLevel: formData.skillLevel,
         team: teamSuggestion.members,
       });
-      // expected { options: [{id,title,brief}], recommendedId }
       setPsOptions(res?.options || []);
       setRecommendedId(res?.recommendedId || null);
       setSelectedPsId(res?.recommendedId || res?.options?.[0]?.id || null);
@@ -105,7 +113,6 @@ export default function NewProjectFlow() {
     }
   };
 
-  // 4) Generate plan based on chosen PS
   const handleGeneratePlan = async () => {
     if (!selectedPsId) {
       setApiError("Please choose a problem statement.");
@@ -119,7 +126,7 @@ export default function NewProjectFlow() {
         domain: formData.domain,
         skillLevel: formData.skillLevel,
         team: teamSuggestion.members,
-        problemStatement: chosen?.title || chosen, // handle either shape
+        problemStatement: chosen?.title || chosen,
       });
       setAiPlan(plan);
       setFlowStep("display_plan");
@@ -130,20 +137,33 @@ export default function NewProjectFlow() {
     }
   };
 
-  // 5) Save project
-  const handleSaveProject = async () => {
+  // Save project + special handling for pending / solo
+  const handleSaveProject = async ({
+    createAsPending = false,
+    assignSoloNow = false,
+  } = {}) => {
     setLoading(true);
     setApiError(null);
     try {
-      const saved = await apiRequest("/projects", "POST", {
+      const payload = {
         name: `${formData.domain} Project`,
         domain: formData.domain,
         skillLevel: formData.skillLevel,
         teammates: teamSuggestion.members,
         aiPlan,
         phase: "Phase 1 — Planning",
-      });
+        // special fields:
+        teamPending: !!createAsPending,
+        teamPendingUntil: createAsPending
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          : null,
+        soloAssigned: !!assignSoloNow,
+      };
+
+      // If assignSoloNow -> mark project solo on server so it does not wait
+      const saved = await apiRequest("/projects", "POST", payload);
       alert("Project created!");
+
       if (saved?.id) navigate(`/projects/${saved.id}`);
       else navigate("/projects");
     } catch (err) {
@@ -151,6 +171,18 @@ export default function NewProjectFlow() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // If the AI returned no team, user can wait or accept solo assignment now
+  const handleUserChooseWait = async () => {
+    // Create project record with teamPendingUntil (7 days) and status 'team_pending'
+    // Backend should schedule or poll to run team formation / match within the interval.
+    await handleSaveProject({ createAsPending: true, assignSoloNow: false });
+  };
+
+  const handleUserChooseSolo = async () => {
+    // Immediately create project and mark soloAssigned: true so backend assigns a solo project
+    await handleSaveProject({ createAsPending: false, assignSoloNow: true });
   };
 
   return (
@@ -161,7 +193,7 @@ export default function NewProjectFlow() {
       <div className="min-h-screen w-full bg-black/50 flex items-center justify-center p-6">
         <div className="bg-white/90 p-10 rounded-2xl shadow-lg w-full max-w-3xl">
           <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">
-            New Project Flow
+            New Project Flow — Welcome, {userName}
           </h1>
 
           {apiError && (
@@ -171,11 +203,10 @@ export default function NewProjectFlow() {
           )}
           {loading && (
             <div className="mb-4 p-3 bg-blue-50 text-blue-800 rounded">
-              Working... please wait.
+              Working...
             </div>
           )}
 
-          {/* Step 0: Choose Team Mode */}
           {flowStep === "choose_team" && (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-lg shadow-md">
@@ -236,7 +267,6 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 1: Manual team input */}
           {flowStep === "manual_team" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4">
@@ -274,7 +304,42 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 2: PS selection */}
+          {flowStep === "team_pending_options" && (
+            <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-lg font-semibold mb-4">
+                We couldn't find an immediate team match
+              </h2>
+              <p className="mb-3">
+                Our AI couldn't auto-match you with teammates for this domain
+                right now. You can either wait up to <strong>7 days</strong> for
+                auto team formation, or ask AI to assign you a solo project
+                immediately.
+              </p>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={handleUserChooseWait}
+                  className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition"
+                >
+                  Wait up to 7 days (recommended)
+                </button>
+                <button
+                  onClick={handleUserChooseSolo}
+                  className="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition"
+                >
+                  Assign solo project now
+                </button>
+              </div>
+
+              <div className="mt-4 text-sm text-gray-600">
+                Note: "Wait" creates a project with{" "}
+                <code>teamPendingUntil</code> set to 7 days from now. Your
+                project will be auto-assigned if a team joins or when the
+                backend scheduled task runs.
+              </div>
+            </div>
+          )}
+
           {flowStep === "ps_selection" && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-3">
@@ -350,7 +415,6 @@ export default function NewProjectFlow() {
             </div>
           )}
 
-          {/* Step 3: Display plan */}
           {flowStep === "display_plan" && aiPlan && (
             <div className="mt-6 bg-white p-6 rounded-lg shadow-md">
               <h2 className="text-lg font-semibold mb-4">AI Project Plan</h2>
@@ -385,12 +449,14 @@ export default function NewProjectFlow() {
                 >
                   Back
                 </button>
-                <button
-                  onClick={handleSaveProject}
-                  className="bg-green-600 text-white px-6 py-2 rounded"
-                >
-                  Save Project
-                </button>
+                <div>
+                  <button
+                    onClick={() => handleSaveProject({})}
+                    className="bg-green-600 text-white px-6 py-2 rounded mr-3"
+                  >
+                    Save Project
+                  </button>
+                </div>
               </div>
             </div>
           )}
