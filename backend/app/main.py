@@ -1,8 +1,9 @@
 # app/main.py
 import os
 import sys
-from fastapi import FastAPI
-from starlette.middleware.cors import CORSMiddleware
+import traceback
+from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import text
 
@@ -11,7 +12,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.database import engine, Base
 import app.models  # ensure models are registered with SQLAlchemy metadata
-from app.routers import auth as auth_router, ai as ai_router, users, resumes, mongo_routes, chatbot, teams, projects
+
+# existing routers from your app package
+from app.routers import auth as auth_router
+from app.routers import users, resumes, mongo_routes, chatbot, teams, projects
+# Note: you already had ai as ai_router included earlier; we'll still include if present.
+try:
+    from app.routers import ai as ai_router
+except Exception:
+    ai_router = None
 
 # --- Debugging: Print database URL at runtime for logs ---
 print("=" * 60)
@@ -31,7 +40,6 @@ app = FastAPI(
 
 # --- Session / CORS configuration (read from env for production) ---
 SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-secret-change-me")
-# Control whether SessionMiddleware sets https_only=True (recommended in production)
 SESSION_HTTPS_ONLY = os.getenv("SESSION_HTTPS_ONLY", "true").lower() in ("1", "true", "yes")
 
 # Allowed origins: read comma-separated list from env or fallback to defaults
@@ -45,7 +53,7 @@ _allowed = os.getenv(
             "https://workexperio-1.onrender.com",
             "https://workexperio-2.onrender.com",
             "https://workexperio-3.onrender.com",
-            "https://workexperio-4.onrender.com"
+            "https://workexperio-4.onrender.com",
         ]
     ),
 )
@@ -70,15 +78,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Include Routers ---
+# --- Include core Routers (your existing app routers) ---
 app.include_router(auth_router.router, prefix="/auth", tags=["Auth"])
-app.include_router(ai_router.router, prefix="/ai", tags=["AI"])
+if ai_router:
+    try:
+        app.include_router(ai_router.router, prefix="/ai", tags=["AI"])
+    except Exception:
+        print("Could not include app.routers.ai router (it may be missing).")
+
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
 app.include_router(mongo_routes.router, prefix="/mongo", tags=["MongoDB"])
 app.include_router(chatbot.router, prefix="/chat", tags=["Chat"])
 app.include_router(teams.router, prefix="/teams", tags=["Teams"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
+
+# --- BEST-EFFORT: include ai_service modules under /ai if present ---
+# This helps when ai_service is a sibling package and its modules expose functions
+# or APIRouters. We try two patterns:
+# 1) module exposes an APIRouter named `router`: include it directly
+# 2) module exposes functions we can call — create small wrapper endpoints
+
+def _try_include_external_router(module_path: str, prefix: str, tag: str):
+    """
+    Try to import module_path and include its `router` attribute under `prefix`.
+    Returns True on success, False otherwise.
+    """
+    try:
+        mod = __import__(module_path, fromlist=["router"])
+        router_obj = getattr(mod, "router", None)
+        if router_obj:
+            app.include_router(router_obj, prefix=prefix, tags=[tag])
+            print(f"Included external router {module_path} under prefix {prefix}")
+            return True
+        else:
+            print(f"Module {module_path} found but has no 'router' attribute")
+            return False
+    except ModuleNotFoundError:
+        print(f"Module {module_path} not found (ModuleNotFoundError)")
+        return False
+    except Exception:
+        print(f"Failed to import {module_path}:")
+        traceback.print_exc()
+        return False
+
+# Try to mount AI modules under /ai/team and /ai (best-effort)
+_ai_base = "ai_service.ai_model"
+# team_ps_selection router or function
+if not _try_include_external_router(_ai_base + ".team_ps_selection", "/ai/team", "AI-Team"):
+    # fallback wrapper - try to import functions and create endpoints if available
+    try:
+        team_ps_mod = __import__(_ai_base + ".team_ps_selection", fromlist=["select_ps"])
+        select_fn = getattr(team_ps_mod, "select_ps", None) or getattr(team_ps_mod, "run_selection", None)
+        if select_fn:
+            wrapper = APIRouter(prefix="/ai/team", tags=["AI-Team"])
+
+            # Support both sync and async select functions
+            async def _call_select(payload: dict):
+                res = select_fn(payload)
+                if hasattr(res, "__await__"):  # coroutine
+                    return await res
+                return res
+
+            @wrapper.post("/ps-selection")
+            async def ps_selection_endpoint(payload: dict):
+                try:
+                    return await _call_select(payload)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=str(e))
+
+            app.include_router(wrapper)
+            print("Mounted fallback wrapper for ai_service.ai_model.team_ps_selection at /ai/team/ps-selection")
+        else:
+            print("ai_service.ai_model.team_ps_selection exists but no select function found.")
+    except ModuleNotFoundError:
+        print("ai_service.ai_model.team_ps_selection not present (skip).")
+    except Exception:
+        traceback.print_exc()
+
+# try resume parser module (if it exposes router)
+_try_include_external_router(_ai_base + ".resume_parsing", "/ai/resume", "AI-Resume")
+
+# try other ai modules e.g., team_formation, make_prediction
+_try_include_external_router(_ai_base + ".team_formation", "/ai/team-formation", "AI-Team-Formation")
+_try_include_external_router(_ai_base + ".make_prediction", "/ai/predict", "AI-Prediction")
+
+# try to include chat_interface.router if available (prefix /chat-interface)
+try:
+    chat_mod = __import__("chat_interface", fromlist=["router"])
+    chat_router = getattr(chat_mod, "router", None)
+    if chat_router:
+        app.include_router(chat_router, prefix="/chat", tags=["ChatInterface"])
+        print("Included chat_interface.router under /chat")
+    else:
+        print("chat_interface module found but no 'router' attribute")
+except ModuleNotFoundError:
+    print("chat_interface module not found; skipping chat inclusion")
 
 # --- Root Endpoint ---
 @app.get("/")
