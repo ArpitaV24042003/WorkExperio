@@ -123,8 +123,18 @@ export async function apiRequest(
   };
 
   // --- Attach Bearer token from localStorage (stable logic) ---
+  let attachedToken = null;
   try {
     let token = readStoredTokenFallback();
+    attachedToken = token;
+    console.debug(
+      "[apiRequest] url=",
+      url,
+      "method=",
+      method,
+      "hasToken=",
+      !!token
+    );
     if (token && !headers.Authorization) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -141,7 +151,7 @@ export async function apiRequest(
     method,
     headers,
     // default to same-origin for cookies; set extra.credentials="include" if you need cross-site cookies
-    credentials: extra.credentials ?? "same-origin",
+    credentials: extra.credentials ?? "omit",
   };
 
   if (body != null) {
@@ -149,38 +159,60 @@ export async function apiRequest(
   }
 
   const exec = async () => {
-    const res = await fetchWithTimeout(url, options, timeoutMs);
+    try {
+      const res = await fetchWithTimeout(url, options, timeoutMs);
 
-    // No content
-    if (res.status === 204) return null;
+      // No content
+      if (res.status === 204) return null;
 
-    const ct = res.headers.get("content-type") || "";
-    const text = await res.text(); // read once
-    const data = ct.includes("application/json")
-      ? parseJSONSafe(text)
-      : text || null;
+      const ct = res.headers.get("content-type") || "";
+      const text = await res.text(); // read once
+      const data = ct.includes("application/json")
+        ? parseJSONSafe(text)
+        : text || null;
 
-    if (!res.ok) {
-      // Normalize message shape
-      const msg =
-        (data && (data.message || data.error || data.detail)) ||
-        `HTTP ${res.status} ${res.statusText}`;
-      const err = new Error(msg);
-      err.status = res.status;
-      err.data = data;
+      if (!res.ok) {
+        // Normalize message shape
+        const msg =
+          (data && (data.message || data.error || data.detail)) ||
+          `HTTP ${res.status} ${res.statusText}`;
+        const err = new Error(msg);
+        err.status = res.status;
+        err.data = data;
 
-      // On auth errors, clear local auth to prevent loops
-      if (res.status === 401 || res.status === 403) {
-        try {
-          clearAuth();
-        } catch {}
+        // On auth errors, clear local auth to prevent loops
+        if (res.status === 401 || res.status === 403) {
+          try {
+            clearAuth();
+          } catch {}
+        }
+        // debug log the server error
+        console.error("[apiRequest] server error", {
+          url,
+          method,
+          status: res.status,
+          data,
+        });
+        throw err;
       }
-
+      console.debug("[apiRequest] success", {
+        url,
+        method,
+        status: res.status,
+        partial: (data && (data.id || data.message)) || null,
+      });
+      return data;
+    } catch (err) {
+      // debug log raw fetch error
+      console.error("[apiRequest] fetch error", {
+        url,
+        method,
+        error: err.message,
+        attachedToken,
+      });
       throw err;
     }
-    return data;
   };
-
   try {
     return await withRetries(exec, { retries, baseDelay });
   } catch (err) {
