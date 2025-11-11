@@ -70,7 +70,8 @@ export function clearAuth() {
   }
 }
 
-function readStoredTokenFallback() {
+/** Return token from storage (primary token or inside user object) */
+export function getToken() {
   try {
     // Primary: token stored directly
     let token = localStorage.getItem("token");
@@ -84,6 +85,11 @@ function readStoredTokenFallback() {
   } catch {
     return null;
   }
+}
+
+function readStoredTokenFallback() {
+  // small internal alias for legacy usage
+  return getToken();
 }
 
 // ---- MAIN FUNCTION ----
@@ -106,9 +112,13 @@ export async function apiRequest(
   const isFormData =
     typeof FormData !== "undefined" && body instanceof FormData;
 
-  // Build headers (don't set JSON header for FormData)
+  // Build headers: only set Content-Type for JSON when there is a non-null body
   const headers = {
-    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...(isFormData
+      ? {}
+      : body != null
+      ? { "Content-Type": "application/json" }
+      : {}),
     ...(extra.headers || {}),
   };
 
@@ -130,8 +140,8 @@ export async function apiRequest(
   const options = {
     method,
     headers,
-    // include credentials by default; override via extra.credentials if using stateless JWT only
-    credentials: extra.credentials ?? "include",
+    // default to same-origin for cookies; set extra.credentials="include" if you need cross-site cookies
+    credentials: extra.credentials ?? "same-origin",
   };
 
   if (body != null) {
@@ -199,6 +209,7 @@ export async function uploadFile(endpoint, file, fields = {}, extra = {}) {
     if (v !== undefined && v !== null) fd.append(k, v);
   });
 
+  // ensure we don't send Content-Type header for multipart
   return await apiRequest(endpoint, "POST", fd, { ...extra, headers: {} });
 }
 
@@ -218,3 +229,12 @@ export function setToken(token) {
     else localStorage.removeItem("token");
   } catch {}
 }
+
+export default {
+  apiRequest,
+  uploadFile,
+  fetchCurrentUser,
+  setToken,
+  clearAuth,
+  getToken,
+};
