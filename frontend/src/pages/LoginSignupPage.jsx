@@ -1,7 +1,8 @@
+// src/pages/LoginSignupPage.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./LoginSignup.css";
-import { apiRequest } from "../api";
+import { apiRequest, fetchCurrentUser, setToken } from "../api";
 import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginSignupPage() {
@@ -14,9 +15,68 @@ export default function LoginSignupPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
 
-  // If your apiRequest already sets the base URL, you can remove this.
+  // fallback backend URL (used for manual fetch fallback only)
   const backendUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-  void backendUrl; // avoid unused var if not used directly
+  void backendUrl;
+
+  /**
+   * Normalize and persist a "safe" user snapshot to localStorage.
+   * Accepts the canonical user object returned from GET /users/me or a login payload.
+   */
+  function persistSafeUser(userObj, token = null) {
+    const safeUser = {
+      id: userObj?.id || userObj?._id || null,
+      name: userObj?.name || userObj?.fullName || null,
+      email: userObj?.email || null,
+      // prefer parsed resume summary field names used by backend
+      resumeParsed:
+        userObj?.resumeParsed ??
+        userObj?.parsed_resume_summary ??
+        userObj?.parsedResume ??
+        null,
+      // Only treat as needs-onboarding when explicitly false
+      profileComplete:
+        userObj?.profile_complete === false
+          ? false
+          : userObj?.profileComplete === false
+          ? false
+          : userObj?.profile_complete === true ||
+            userObj?.profileComplete === true
+          ? true
+          : null,
+      createdAt: userObj?.createdAt ?? userObj?.created_at ?? null,
+      raw: userObj,
+    };
+
+    try {
+      if (token) setToken(token);
+      localStorage.setItem("user", JSON.stringify(safeUser));
+      localStorage.setItem("lastLogin", new Date().toISOString());
+    } catch (e) {
+      // ignore storage errors
+      // But still set token separately if available
+      if (token) setToken(token);
+    }
+    return safeUser;
+  }
+
+  // Manual fallback to GET /users/me if fetchCurrentUser fails (rare)
+  async function fetchCanonicalUserFallback(token) {
+    if (!token) return null;
+    try {
+      const res = await fetch(`${backendUrl}/users/me`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,7 +85,7 @@ export default function LoginSignupPage() {
 
     try {
       if (isSignup) {
-        // Register user
+        // Register user -> prompt them to log in
         await apiRequest("/users/register", "POST", { name, email, password });
         alert("Signup successful! Please log in.");
         setIsSignup(false);
@@ -37,42 +97,54 @@ export default function LoginSignupPage() {
       }
 
       // LOGIN
-      const data = await apiRequest("/users/login", "POST", { email, password });
+      const data = await apiRequest("/users/login", "POST", {
+        email,
+        password,
+      });
 
       // Accept several possible shapes:
-      // 1) { token: "...", user: { ... } }
-      // 2) { user: { ... } }
-      // 3) { id, name, email, ... } (user directly)
-      const token = data?.token || data?.accessToken || null;
-      const userObj = data?.user || (data?.id ? data : data);
+      // - { token: "...", user: { ... } }
+      // - { token: "..." }
+      // - { user: {...} }
+      // - legacy: user object directly
+      const token =
+        data?.token ||
+        data?.accessToken ||
+        data?.access_token ||
+        data?.user?.token ||
+        data?.user?.accessToken ||
+        null;
 
-      // Save token if provided
-      if (token) localStorage.setItem("token", token);
+      const loginUserObj = data?.user || (data?.id ? data : null);
 
-      // Save user info (strip sensitive fields if present)
-      const safeUser = {
-        id: userObj?.id || userObj?._id || null,
-        name: userObj?.name || userObj?.fullName || null,
-        email: userObj?.email || null,
-        resumeParsed: userObj?.resumeParsed ?? null,
-        profileComplete: userObj?.profileComplete ?? null,
-        createdAt: userObj?.createdAt ?? null,
-        // keep the raw object too for flexibility
-        raw: userObj,
-      };
+      // If token present, persist via setToken immediately so fetchCurrentUser works
+      if (token) {
+        setToken(token);
+      }
 
-      localStorage.setItem("user", JSON.stringify(safeUser));
-      localStorage.setItem("lastLogin", new Date().toISOString());
+      // Now fetch the canonical user information from the backend if possible.
+      // Preferred: fetchCurrentUser() (uses apiRequest + token)
+      let canonical = null;
+      try {
+        canonical = await fetchCurrentUser();
+      } catch (err) {
+        // fallback: try manual fetch using token
+        if (token) {
+          canonical = await fetchCanonicalUserFallback(token);
+        }
+      }
 
-      // Decide onboarding vs main dashboard
-      // If profileComplete === false OR resumeParsed is missing/null -> treat as needs onboarding
-      const needsProfile =
-        safeUser.profileComplete === false ||
-        safeUser.profileComplete === null ||
-        !safeUser.resumeParsed;
+      // If canonical not available, fall back to login-user object or raw response
+      if (!canonical) canonical = loginUserObj || data || null;
+
+      // Persist normalized snapshot and token
+      const safeUser = persistSafeUser(canonical || {}, token);
+
+      // Decide onboarding vs main dashboard:
+      // Only treat as "needs onboarding" when profileComplete is explicitly false
+      const needsProfile = safeUser.profileComplete === false;
 
       if (needsProfile) {
-        // firstTime flag so ProfilePage knows to continue to project flow after save
         navigate("/profile?firstTime=1");
       } else {
         navigate("/dashboard");
@@ -81,7 +153,8 @@ export default function LoginSignupPage() {
       // normalize message
       const message =
         err?.message ||
-        (err?.error && typeof err.error === "string" ? err.error : null) ||
+        (err?.data &&
+          (err.data.message || err.data.error || err.data.detail)) ||
         "Something went wrong";
       setErrorMsg(message);
     } finally {
@@ -98,6 +171,7 @@ export default function LoginSignupPage() {
         <Link to="/" className="nav-link">
           Home
         </Link>
+        {/* Add profile link to your global nav (App.jsx) so returning users can edit profile anytime */}
       </nav>
 
       <section className="login-section">
@@ -105,7 +179,15 @@ export default function LoginSignupPage() {
           <h3 className="login-title">{isSignup ? "Sign Up" : "Log In"}</h3>
 
           {errorMsg && (
-            <div style={{ color: "#ffbaba", background: "#3a1b1b", padding: 10, borderRadius: 6, marginBottom: 12 }}>
+            <div
+              style={{
+                color: "#ffbaba",
+                background: "#3a1b1b",
+                padding: 10,
+                borderRadius: 6,
+                marginBottom: 12,
+              }}
+            >
               {errorMsg}
             </div>
           )}
@@ -159,7 +241,13 @@ export default function LoginSignupPage() {
             </div>
 
             <button type="submit" className="login-btn" disabled={loading}>
-              {loading ? (isSignup ? "Signing up..." : "Logging in...") : isSignup ? "Sign Up" : "Log In"}
+              {loading
+                ? isSignup
+                  ? "Signing up..."
+                  : "Logging in..."
+                : isSignup
+                ? "Sign Up"
+                : "Log In"}
             </button>
           </form>
 

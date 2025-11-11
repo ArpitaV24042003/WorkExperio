@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import "./LoginSignup.css";
-import { apiRequest } from "../api";
+import { apiRequest, uploadFile } from "../api";
 import { aiParseResume } from "../ai";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -81,30 +81,46 @@ export default function ProfilePage() {
     setSaving(true);
     setApiError(null);
     try {
+      // If we have a resume file, upload it first to /resumes/parse which returns parsed JSON & mongo id
+      let parsed = parsedResume;
+      let parsedMongoId = parsed?.mongo_id || null;
+      if (resumeFile) {
+        const res = await uploadFile("/resumes/parse", resumeFile);
+        // backend should respond { parsed: {...}, mongo_id: '...' , summary: {...}, resume_record_id: ... }
+        parsed = res.parsed || parsed;
+        parsedMongoId = res.mongo_id || parsedMongoId;
+      }
+
       const payload = {
-        ...profile,
-        resumeFilename: resumeFile?.name,
-        resumeParsed: {
-          skills: parsedResume?.skills || [],
-          sections: parsedResume?.sections || {},
-          entities: parsedResume?.entities || {},
-        },
-        profileComplete: true,
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        linkedIn: profile.linkedIn,
+        // this tells backend we've completed profile onboarding
+        profile_complete: true,
+        // store pointer/summary for quicker frontend checks
+        parsed_resume_mongo_id: parsedMongoId,
+        parsed_resume_summary: parsed
+          ? parsed.skills
+            ? { skills: parsed.skills }
+            : {}
+          : null,
       };
+
       const updated = await apiRequest("/users/me", "PATCH", payload);
-      // update localStorage user copy (if any)
+
+      // update localStorage copy too
       try {
         const stored = JSON.parse(localStorage.getItem("user") || "{}");
         const merged = { ...(stored || {}), ...updated };
         localStorage.setItem("user", JSON.stringify(merged));
-      } catch (e) {
-        /* ignore */
-      }
+      } catch (e) {}
 
       alert("Profile saved!");
       if (firstTime) {
-        // Continue onboarding -> open New Project flow
         navigate("/projects/new-flow");
+      } else {
+        navigate("/dashboard");
       }
     } catch (err) {
       setApiError(err?.message || "Failed to save profile");
