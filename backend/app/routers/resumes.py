@@ -1,19 +1,21 @@
-# app/routers/resumes.py
+# backend/app/routers/resumes.py
+import os
+import tempfile
+import json
+import datetime
+from typing import Optional
+
 import httpx
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from fastapi import Request
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app import models
 from app.mongo import resume_raw, resume_parsed, mongo_db
-import tempfile
-import os
-import json
-from app.routers.users import get_current_user
-from datetime import datetime
-import traceback
+from app.routers.users import get_current_user  # existing dependency to get current user
 
 router = APIRouter()
+
 
 @router.post("/parse")
 async def parse_resume_endpoint(
@@ -22,136 +24,122 @@ async def parse_resume_endpoint(
     current_user: models.User = Depends(get_current_user),
 ):
     """
-    Upload resume, forward to AI service (if configured) or local parser (if available),
-    persist raw + parsed to Mongo and record a Resume entry in Postgres.
+    Upload a resume file, send it to an external AI parsing service, store raw + parsed into MongoDB and
+    create a Resume row in Postgres (and update the user's parsed_resume_summary).
     """
+
+    # Basic validation
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
-    tmpdir = tempfile.mkdtemp()
-    path = os.path.join(tmpdir, file.filename)
-
+    # Read file bytes once
     try:
         content = await file.read()
-        with open(path, "wb") as f:
-            f.write(content)
     except Exception as e:
-        # cleanup and return error
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {str(e)}")
 
-    # Save raw metadata to Mongo (non-blocking-ish)
+    # Temp save (optional, used for debugging / compatibility)
+    tmpdir = tempfile.mkdtemp()
+    tmp_path = os.path.join(tmpdir, file.filename)
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+    except Exception:
+        # non-fatal; continue without temp file if we couldn't write
+        tmp_path = None
+
+    # Prepare raw doc metadata for Mongo
+    now = datetime.datetime.utcnow()
     raw_doc = {
         "filename": file.filename,
         "content_type": file.content_type,
-        "uploaded_by": current_user.id if current_user is not None else None,
-        # uploaded_at: prefer Mongo server time if available, else use UTC now
-        "uploaded_at": None,
+        "uploaded_by": getattr(current_user, "id", None),
+        "uploaded_at": now,
     }
-
     try:
-        # If mongo_db has serverStatus, attempt to fetch server local time.
-        server_time = None
-        try:
-            ss = mongo_db.command("serverStatus")
-            server_time = ss.get("localTime")
-        except Exception:
-            server_time = None
-
-        raw_doc["uploaded_at"] = server_time if server_time is not None else datetime.utcnow()
         raw_doc["size"] = len(content)
     except Exception:
-        # fallback metadata
         raw_doc["size"] = None
 
-    raw_res = None
+    # Insert raw metadata
     try:
         raw_res = resume_raw.insert_one(raw_doc)
     except Exception as e:
-        # Log insertion failure but continue — we still want to try parsing
-        print("Warning: failed to write resume raw metadata to mongo:", str(e))
+        # Cleanup temp file
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Failed to save raw resume metadata: {str(e)}")
 
-    # --- AI parsing logic ---
-    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")
+    # --- Call external AI service to parse resume ---
+    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")  # e.g. https://ai-service.example.com
+    if not AI_SERVICE_URL:
+        # If you would prefer local fallback, implement it here.
+        # For now, signal a server-side misconfiguration so frontend shows a proper error.
+        raise HTTPException(status_code=503, detail="AI_SERVICE_URL is not configured on the server")
+
+    # Try a couple of plausible endpoints so the backend will work whether AI exposes /parse-resume or /ai/resume-parse
+    candidate_paths = ["/parse-resume", "/ai/resume-parse", "/resume/parse", "/ai/parse-resume"]
     parsed = None
+    last_exc: Optional[Exception] = None
 
-    # Helper to cleanup temp file
-    def _cleanup_tmp():
-        try:
-            if os.path.exists(path):
-                os.remove(path)
-        except Exception:
-            pass
-        try:
-            if os.path.isdir(tmpdir):
-                os.rmdir(tmpdir)
-        except Exception:
-            pass
+    # Build the files payload for httpx: ('filename', bytes, content_type)
+    files_to_send = {"file": (file.filename, content, file.content_type or "application/octet-stream")}
 
-    # 1) If AI_SERVICE_URL configured, call it
-    if AI_SERVICE_URL:
-        parse_endpoint = AI_SERVICE_URL.rstrip("/") + "/parse-resume"
-        files_to_send = {"file": (file.filename, content, file.content_type)}
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(parse_endpoint, files=files_to_send)
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for p in candidate_paths:
+            url = AI_SERVICE_URL.rstrip("/") + p
+            try:
+                resp = await client.post(url, files=files_to_send)
+                # if AI service uses /ai prefix with other base, it might return 404; try next candidate
+                if resp.status_code == 404:
+                    continue
                 resp.raise_for_status()
-                parsed = resp.json()
-        except httpx.RequestError as e:
-            _cleanup_tmp()
-            raise HTTPException(status_code=503, detail=f"AI service connection error: {str(e)}")
-        except httpx.HTTPStatusError as e:
-            _cleanup_tmp()
-            raise HTTPException(status_code=e.response.status_code, detail=f"AI service returned error: {e.response.text}")
-        except Exception as e:
-            _cleanup_tmp()
-            raise HTTPException(status_code=500, detail=f"AI service parsing failed: {str(e)}")
-    else:
-        # 2) Try to use a local parser module if present (ai_service.ai_model.resume_parsing)
-        try:
-            local_mod = __import__("ai_service.ai_model.resume_parsing", fromlist=["parse_bytes"])
-            parse_fn = getattr(local_mod, "parse_bytes", None) or getattr(local_mod, "parse_resume_bytes", None)
-            if parse_fn:
+                # Attempt to parse response JSON
                 try:
-                    parsed = parse_fn(content)  # support sync function
-                    # if coroutine returned, await it
-                    if hasattr(parsed, "__await__"):
-                        parsed = await parsed
-                except Exception as e:
-                    _cleanup_tmp()
-                    raise HTTPException(status_code=500, detail=f"Local parser failed: {str(e)}")
-            else:
-                # No parser available
-                _cleanup_tmp()
-                raise HTTPException(status_code=503, detail="No AI_SERVICE_URL configured and no local parser available")
-        except ModuleNotFoundError:
-            _cleanup_tmp()
-            raise HTTPException(status_code=503, detail="AI service not configured and no local parser available")
-        except Exception as e:
-            _cleanup_tmp()
-            raise HTTPException(status_code=500, detail=f"Unexpected error loading local parser: {str(e)}")
+                    parsed = resp.json()
+                except Exception:
+                    # if response isn't JSON, raise
+                    raise HTTPException(status_code=502, detail=f"AI service returned non-JSON at {url}")
+                # success -> break
+                break
+            except httpx.RequestError as rex:
+                last_exc = rex
+                # network error: try next endpoint candidate
+                continue
+            except httpx.HTTPStatusError as hexc:
+                # If AI service returned non-2xx other than 404, stop and bubble up
+                last_exc = hexc
+                # prefer to pass detailed message
+                detail = f"AI service at {url} returned {hexc.response.status_code}: {hexc.response.text}"
+                raise HTTPException(status_code=502, detail=detail)
+        else:
+            # exhausted candidates
+            if last_exc:
+                raise HTTPException(status_code=503, detail=f"Could not reach AI service: {str(last_exc)}")
+            raise HTTPException(status_code=502, detail="AI service did not return parsed data")
 
-    # store parsed output in mongo
+    # --- Persist parsed output to Mongo ---
+    parsed_doc = {
+        "raw_id": getattr(raw_res, "inserted_id", None),
+        "parsed": parsed,
+        "user_id": getattr(current_user, "id", None),
+        "created_at": now,
+    }
     try:
-        parsed_doc = {
-            "raw_id": str(raw_res.inserted_id) if raw_res else None,
-            "parsed": parsed,
-            "user_id": current_user.id if current_user is not None else None,
-            "created_at": datetime.utcnow(),
-        }
         parsed_res = resume_parsed.insert_one(parsed_doc)
     except Exception as e:
-        # cleanup temp file and bubble an error
-        _cleanup_tmp()
-        print("Error saving parsed resume to mongo:", str(e))
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to store parsed resume: {str(e)}")
+        # Cleanup temp file
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Failed to save parsed resume: {str(e)}")
 
-    # Create Resume record in Postgres and update user parsed pointer & summary
+    # --- Create Postgres Resume record and update user summary ---
     try:
         r = models.Resume(
             user_id=current_user.id,
@@ -160,35 +148,49 @@ async def parse_resume_endpoint(
         )
         db.add(r)
 
-        # create a compact JSON summary (skills & top sections) to store in user.parsed_resume_summary
+        # Build compact summary: best-effort extraction of skills & sections
         summary = {
             "skills": parsed.get("skills", []) if isinstance(parsed, dict) else [],
-            "sections": {
-                k: parsed.get("sections", {}).get(k)
-                for k in ["Education", "Projects", "Certificates"]
-                if isinstance(parsed, dict) and parsed.get("sections")
-            },
+            "sections": {},
         }
+        if isinstance(parsed, dict):
+            sections = parsed.get("sections", {})
+            if isinstance(sections, dict):
+                for k in ("Education", "Projects", "Certificates", "Experience"):
+                    if sections.get(k):
+                        summary["sections"][k] = sections.get(k)
 
+        # update user fields (non-destructive)
         current_user.parsed_resume_mongo_id = str(parsed_res.inserted_id)
-        current_user.parsed_resume_summary = json.dumps(summary)
-        current_user.profile_complete = True  # if parsed, mark profile_complete true by default
+        try:
+            current_user.parsed_resume_summary = json.dumps(summary)
+        except Exception:
+            current_user.parsed_resume_summary = None
+
+        # Optionally mark profile_complete true if parsing succeeded
+        current_user.profile_complete = True
+
         db.add(current_user)
         db.commit()
+        db.refresh(r)
     except Exception as e:
+        # If DB commit fails, we should at least return parsed output; but signal failure to create Resume record
+        # (Don't swallow the error entirely)
         db.rollback()
-        _cleanup_tmp()
-        print("Error saving Resume record / updating user:", str(e))
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to save resume record: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create resume record or update user: {str(e)}")
+    finally:
+        # cleanup tmp file
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
-    # cleanup the temp file and directory
-    _cleanup_tmp()
-
-    # Return parsed JSON to frontend
+    # --- Return parsed payload to frontend ---
     return {
         "parsed": parsed,
-        "mongo_id": str(parsed_res.inserted_id),
+        "mongo_raw_id": str(raw_res.inserted_id) if getattr(raw_res, "inserted_id", None) else None,
+        "mongo_parsed_id": str(parsed_res.inserted_id) if getattr(parsed_res, "inserted_id", None) else None,
         "summary": summary,
-        "resume_record_id": r.id,
+        "resume_record_id": getattr(r, "id", None),
     }
