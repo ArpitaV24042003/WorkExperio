@@ -1,3 +1,122 @@
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..dependencies import get_current_user
+from ..models import Project, Team, TeamMember, ProjectWaitlist, User
+from ..ai.team_selection import recommend_team
+from ..schemas import (
+	TeamSuggestionRequest,
+	TeamAssignRequest,
+	TeamRead,
+	TeamMemberRead,
+	WaitlistRequest,
+	WaitlistEntryRead,
+)
+
+router = APIRouter()
+
+WAITLIST_DURATION = timedelta(days=7)
+
+
+@router.post("/ml/team-selection")
+def team_selection(payload: TeamSuggestionRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+	project = db.query(Project).filter(Project.id == payload.project_id, Project.owner_id == current_user.id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+	user_profiles = [profile.model_dump() for profile in payload.candidate_profiles]
+	recommendations = recommend_team(user_profiles, payload.required_skills)
+	return recommendations
+
+
+@router.post("/projects/{project_id}/assign-team", response_model=TeamRead)
+def assign_team(
+	project_id: str,
+	payload: TeamAssignRequest,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+	team = Team(project_id=project_id)
+	db.add(team)
+	db.flush()
+
+	for user_id in payload.user_ids:
+		role = payload.role_map.get(user_id) if payload.role_map else None
+		db.add(TeamMember(team_id=team.id, user_id=user_id, role=role))
+
+	project.team_id = team.id
+	project.team_type = "team"
+	db.commit()
+	db.refresh(team)
+	return team
+
+
+@router.get("/projects/{project_id}/team", response_model=dict[str, Any])
+def get_team(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	if not project or not project.team_id:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not assigned")
+	team = db.query(Team).filter(Team.id == project.team_id).first()
+	members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+	return {
+		"team": TeamRead.model_validate(team),
+		"members": [TeamMemberRead.model_validate(member) for member in members],
+	}
+
+
+@router.post("/projects/{project_id}/waitlist", response_model=WaitlistEntryRead)
+def join_waitlist(
+	project_id: str,
+	payload: WaitlistRequest,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+	entry = ProjectWaitlist(project_id=project_id, user_id=payload.user_id)
+	db.add(entry)
+	project.team_type = "none"
+	db.commit()
+	db.refresh(entry)
+	return entry
+
+
+@router.get("/projects/{project_id}/waitlist-status")
+def waitlist_status(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+	entries = db.query(ProjectWaitlist).filter(ProjectWaitlist.project_id == project_id).all()
+	now = datetime.now(timezone.utc)
+	status_entries = []
+	for entry in entries:
+		elapsed = now - entry.created_at.replace(tzinfo=timezone.utc)
+		days_left = max(0, (WAITLIST_DURATION - elapsed).days)
+		status_entries.append(
+			{
+				"id": entry.id,
+				"user_id": entry.user_id,
+				"created_at": entry.created_at,
+				"days_left": days_left,
+			}
+		)
+
+	return {
+		"project_id": project_id,
+		"entries": status_entries,
+		"auto_solo_at": entries[0].created_at + WAITLIST_DURATION if entries else None,
+	}
 # app/routers/teams.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session

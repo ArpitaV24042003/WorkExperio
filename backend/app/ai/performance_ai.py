@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from typing import Dict, Any, List
+
+
+def analyze_performance(
+	tasks_completed: int,
+	messages_sent: int,
+	reviews: List[Dict[str, Any]],
+	xp_base: int,
+) -> Dict[str, Any]:
+	review_scores = [review.get("rating", 0) for review in reviews]
+	avg_review = sum(review_scores) / len(review_scores) if review_scores else 0
+
+	participation_score = min(1.0, messages_sent / 20) * 100
+	task_consistency_score = min(1.0, tasks_completed / 10) * 100
+	communication_score = min(1.0, messages_sent / 15) * 100
+
+	total_xp_awarded = int(xp_base + task_consistency_score * 0.5 + avg_review * 10)
+
+	return {
+		"participation_score": round(participation_score, 2),
+		"task_consistency_score": round(task_consistency_score, 2),
+		"communication_score": round(communication_score, 2),
+		"review_summary": {
+			"average_rating": round(avg_review, 2),
+			"ratings": review_scores,
+		},
+		"total_xp_awarded": total_xp_awarded,
+	}
+
