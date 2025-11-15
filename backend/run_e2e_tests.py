@@ -316,7 +316,11 @@ def main():
     print()
     results.append(("Create Skill", test_6_create_skill(test_user)))
     print()
-    success, project_id = test_7_create_project(test_user)
+    result = test_7_create_project(test_user)
+    if isinstance(result, tuple):
+        success, project_id = result
+    else:
+        success = result
     results.append(("Create Project", success))
     print()
     results.append(("List Projects", test_8_list_projects(test_user)))

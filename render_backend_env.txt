@@ -1,0 +1,15 @@
+# Backend Environment Variables for Render
+# Copy these to your Render backend service
+# Replace <PLACEHOLDERS> with actual values
+
+SECRET_KEY=TA7sorTGZPVdgEeJgpsG1magI6GrJC9dbHQcs9i4WQE
+DATABASE_URL=<FROM_POSTGRES_DATABASE_INTERNAL_URL>
+ALLOW_ORIGINS=https://workexperio-frontend.onrender.com
+ENV=production
+LOG_LEVEL=INFO
+MONGO_URL=<OPTIONAL_MONGODB_URL>
+MONGO_DB_NAME=workexperio_db
+GITHUB_CLIENT_ID=<OPTIONAL_GITHUB_CLIENT_ID>
+GITHUB_CLIENT_SECRET=<OPTIONAL_GITHUB_CLIENT_SECRET>
+BACKEND_BASE_URL=https://workexperio-backend.onrender.com
+FRONTEND_URL=https://workexperio-frontend.onrender.com
