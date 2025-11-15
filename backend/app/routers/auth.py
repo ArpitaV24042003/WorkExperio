@@ -1,12 +1,47 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+import os
+import logging
+from typing import Optional
 
-from ..db import get_db
+from authlib.integrations.starlette_client import OAuth
+from starlette.config import Config
+
+from ..db import get_db, SessionLocal
 from ..models import User, UserStats
 from ..schemas import UserCreate, UserLogin, TokenResponse
 from ..security import hash_password, verify_password, create_access_token
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# ---------- GitHub OAuth Configuration ----------
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Basic safety check: make sure client id/secret exist
+if not (GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET):
+    logger.warning("GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not set. OAuth will fail until provided.")
+
+# Starlette Config for Authlib
+config = Config(environ={
+    "GITHUB_CLIENT_ID": GITHUB_CLIENT_ID,
+    "GITHUB_CLIENT_SECRET": GITHUB_CLIENT_SECRET,
+})
+oauth = OAuth(config)
+
+oauth.register(
+    name="github",
+    client_id=GITHUB_CLIENT_ID,
+    client_secret=GITHUB_CLIENT_SECRET,
+    access_token_url="https://github.com/login/oauth/access_token",
+    authorize_url="https://github.com/login/oauth/authorize",
+    api_base_url="https://api.github.com/",
+    client_kwargs={"scope": "read:user user:email"},
+)
 
 
 @router.post("/signup", response_model=TokenResponse)
@@ -34,55 +69,21 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login", response_model=TokenResponse)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
 	user = db.query(User).filter(User.email == payload.email).first()
-	if not user or not verify_password(payload.password, user.password_hash):
+	if not user:
+		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+	
+	# OAuth users don't have password_hash
+	if user.password_hash is None:
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="This account uses OAuth authentication. Please sign in with GitHub."
+		)
+	
+	if not verify_password(payload.password, user.password_hash):
 		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
 	token = create_access_token(user.id)
 	return TokenResponse(access_token=token)
-# backend/app/routers/auth.py
-import os
-import logging
-from typing import Optional
-
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import RedirectResponse
-from authlib.integrations.starlette_client import OAuth
-from starlette.config import Config
-from sqlalchemy.orm import Session
-
-# local imports
-from app.database import SessionLocal
-from app.models import User  # ensure User model includes github_id, avatar_url, auth_provider
-
-logger = logging.getLogger(__name__)
-router = APIRouter()
-
-# ---------- Env / Defaults ----------
-GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://workexperio.onrender.com")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://workexperio-4.onrender.com")  # change to your frontend prod URL
-
-# Basic safety check: make sure client id/secret exist
-if not (GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET):
-    logger.warning("GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET not set. OAuth will fail until provided.")
-
-# Starlette Config for Authlib (we pass env via the Config's environ dict)
-config = Config(environ={
-    "GITHUB_CLIENT_ID": GITHUB_CLIENT_ID,
-    "GITHUB_CLIENT_SECRET": GITHUB_CLIENT_SECRET,
-})
-oauth = OAuth(config)
-
-oauth.register(
-    name="github",
-    client_id=GITHUB_CLIENT_ID,
-    client_secret=GITHUB_CLIENT_SECRET,
-    access_token_url="https://github.com/login/oauth/access_token",
-    authorize_url="https://github.com/login/oauth/authorize",
-    api_base_url="https://api.github.com/",
-    client_kwargs={"scope": "read:user user:email"},
-)
 
 
 @router.get("/github/login")
@@ -139,12 +140,18 @@ async def github_callback(request: Request):
                 new_user = User(
                     name=username,
                     email=email or f"{username}@github.local",
+                    password_hash=None,  # Nullable for OAuth users
                     github_id=github_id,
                     avatar_url=avatar,
                     auth_provider="github",
-                    password=None,  # allow nullable password for OAuth users
                 )
                 db.add(new_user)
+                db.flush()  # Flush to get user.id
+                
+                # Create UserStats for new OAuth user (same as signup)
+                stats = UserStats(user_id=new_user.id)
+                db.add(stats)
+                
                 db.commit()
                 db.refresh(new_user)
                 existing = new_user

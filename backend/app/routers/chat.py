@@ -1,5 +1,5 @@
 from typing import Dict, List
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
 
@@ -16,11 +16,37 @@ async def broadcast(project_id: str, message: dict):
 		await connection.send_json(message)
 
 
+@router.get("/projects/{project_id}/messages")
+def get_messages(project_id: str, db: Session = Depends(get_db), limit: int = 100):
+	"""Fetch previous chat messages for a project"""
+	messages = (
+		db.query(ChatMessage)
+		.filter(ChatMessage.project_id == project_id)
+		.order_by(ChatMessage.created_at.desc())
+		.limit(limit)
+		.all()
+	)
+	return [
+		{
+			"id": msg.id,
+			"user_id": msg.user_id,
+			"content": msg.content,
+			"created_at": msg.created_at.isoformat(),
+		}
+		for msg in reversed(messages)
+	]
+
+
 @router.websocket("/ws/projects/{project_id}/chat")
-async def project_chat(websocket: WebSocket, project_id: str, db: Session = Depends(get_db)):
+async def project_chat(websocket: WebSocket, project_id: str):
 	await websocket.accept()
 	connections = active_connections.setdefault(project_id, [])
 	connections.append(websocket)
+	
+	# Create a database session for this WebSocket connection
+	from ..db import SessionLocal
+	db = SessionLocal()
+	
 	try:
 		while True:
 			data = await websocket.receive_json()
@@ -32,6 +58,7 @@ async def project_chat(websocket: WebSocket, project_id: str, db: Session = Depe
 			message = ChatMessage(project_id=project_id, user_id=user_id, content=content)
 			db.add(message)
 			db.commit()
+			db.refresh(message)
 			await broadcast(
 				project_id,
 				{
@@ -43,7 +70,10 @@ async def project_chat(websocket: WebSocket, project_id: str, db: Session = Depe
 			)
 	except WebSocketDisconnect:
 		pass
+	except Exception as e:
+		print(f"WebSocket error: {e}")
 	finally:
+		db.close()
 		connections.remove(websocket)
 		if not connections:
 			active_connections.pop(project_id, None)

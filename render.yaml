@@ -1,0 +1,67 @@
+services:
+  # Backend API Service
+  - type: web
+    name: workexperio-backend
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: workexperio-db
+          property: connectionString
+      - key: ALLOW_ORIGINS
+        value: https://workexperio-frontend.onrender.com
+      - key: ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MONGO_URL
+        sync: false
+      - key: MONGO_DB_NAME
+        value: workexperio_db
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: BACKEND_BASE_URL
+        fromService:
+          name: workexperio-backend
+          type: web
+          property: host
+      - key: FRONTEND_URL
+        fromService:
+          name: workexperio-frontend
+          type: web
+          property: host
+
+  # Frontend Service
+  - type: web
+    name: workexperio-frontend
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm run preview
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: workexperio-backend
+          type: web
+          property: host
+      - key: VITE_WS_URL
+        fromService:
+          name: workexperio-backend
+          type: web
+          property: host
+
+databases:
+  - name: workexperio-db
+    plan: starter
+    databaseName: workexperio
+    user: workexperio_user

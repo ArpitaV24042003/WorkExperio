@@ -8,18 +8,25 @@ from datetime import datetime
 # ---------------------------
 load_dotenv()
 
-MONGO_URL = os.getenv("MONGO_URL")
-MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "workexperio_db")
 
 # ---------------------------
-# Connect to MongoDB
+# Connect to MongoDB (optional - only needed for resume parsing)
 # ---------------------------
-client = MongoClient(MONGO_URL)
-mongo_db = client[MONGO_DB_NAME]
-
-print("✅ Connected to MongoDB successfully!")
-print("Databases:", client.list_database_names())
-print("Collections in", MONGO_DB_NAME, ":", mongo_db.list_collection_names())
+try:
+	client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=2000)
+	# Test connection
+	client.server_info()
+	mongo_db = client[MONGO_DB_NAME]
+	print("✅ Connected to MongoDB successfully!")
+	print("Databases:", client.list_database_names())
+	print("Collections in", MONGO_DB_NAME, ":", mongo_db.list_collection_names())
+except Exception as e:
+	print(f"⚠️  MongoDB not available: {e}")
+	print("⚠️  Resume parsing features will be limited. MongoDB is optional for basic functionality.")
+	client = None
+	mongo_db = None
 
 # ---------------------------
 # Resume collections

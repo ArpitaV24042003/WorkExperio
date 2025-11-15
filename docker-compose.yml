@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: workexperio-db
+    environment:
+      POSTGRES_DB: workexperio
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: workexperio-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change_me_production_secret_key}
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/workexperio
+      - ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173
+      - ENV=production
+      - LOG_LEVEL=INFO
+      - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017}
+      - MONGO_DB_NAME=workexperio_db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+    restart: unless-stopped
+
+  # MongoDB (Optional - for resume parsing)
+  mongo:
+    image: mongo:7
+    container_name: workexperio-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: workexperio-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongo_data:

@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
 from .. import models # NEW
-from ..database import get_db # NEW
+from ..db import get_db # NEW
 
 router = APIRouter(tags=["Chat"])
 

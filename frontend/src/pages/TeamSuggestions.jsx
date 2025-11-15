@@ -40,7 +40,7 @@ export default function TeamSuggestions() {
         required_skills: candidates.flatMap((candidate) => candidate.skills),
         candidate_profiles: candidates,
       };
-      const { data } = await apiClient.post("/ml/team-selection", payload).catch(handleApiError);
+      const { data } = await apiClient.post("/teams/ml/team-selection", payload).catch(handleApiError);
       setSuggestion(data);
     } catch (error) {
       setMessage(error.message);
@@ -53,7 +53,7 @@ export default function TeamSuggestions() {
       return;
     }
     try {
-      await apiClient.post(`/projects/${projectId}/assign-team`, {
+      await apiClient.post(`/teams/projects/${projectId}/assign-team`, {
         project_id: projectId,
         user_ids: suggestion.recommended_team,
         role_map: teamRoles,
@@ -66,7 +66,7 @@ export default function TeamSuggestions() {
 
   const joinWaitlist = async () => {
     try {
-      await apiClient.post(`/projects/${projectId}/waitlist`, { user_id: user?.id });
+      await apiClient.post(`/teams/projects/${projectId}/waitlist`, { user_id: user?.id });
       setMessage("Joined waitlist. We'll notify you about solo fallback.");
       await fetchWaitlistStatus();
     } catch (error) {
@@ -76,7 +76,7 @@ export default function TeamSuggestions() {
 
   const fetchWaitlistStatus = async () => {
     try {
-      const { data } = await apiClient.get(`/projects/${projectId}/waitlist-status`).catch(handleApiError);
+      const { data } = await apiClient.get(`/teams/projects/${projectId}/waitlist-status`).catch(handleApiError);
       setWaitlistStatus(data);
     } catch (error) {
       console.error(error);

@@ -124,7 +124,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from .. import schemas
-from ..database import get_db
+from ..db import get_db
 from ..crud import teams as crud_teams
 from .. import models
 
