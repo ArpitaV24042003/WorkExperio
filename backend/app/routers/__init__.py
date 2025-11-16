@@ -12,6 +12,3 @@ __all__ = [
 	"metrics",
 	"admin",
 ]
-# routers/__init__.py
-
-# This file is now empty.
