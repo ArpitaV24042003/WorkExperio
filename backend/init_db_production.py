@@ -18,8 +18,26 @@ def init_database():
     print(f"Database URL: {engine.url}")
     print()
     
+    # Test connection first
+    print("Testing database connection...")
+    try:
+        db = SessionLocal()
+        result = db.execute(text("SELECT 1"))
+        result.fetchone()
+        db.close()
+        print("✅ Database connection successful")
+    except Exception as e:
+        print(f"⚠️  Database connection failed: {e}")
+        print("⚠️  This might be due to:")
+        print("   1. DATABASE_URL environment variable not set correctly")
+        print("   2. Database credentials are incorrect")
+        print("   3. Database server is not accessible")
+        print("⚠️  Skipping table creation. Please check your DATABASE_URL in Render environment variables.")
+        return False
+    
     # Create all tables
     try:
+        print()
         print("Creating tables...")
         Base.metadata.create_all(bind=engine)
         print("✅ Tables created successfully")
@@ -46,25 +64,29 @@ def init_database():
     
     print(f"✅ All {len(expected_tables)} tables exist")
     
-    # Test connection
-    print()
-    print("Testing database connection...")
-    db = SessionLocal()
-    try:
-        result = db.execute(text("SELECT 1"))
-        result.fetchone()
-        print("✅ Database connection successful")
-    except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        return False
-    finally:
-        db.close()
+    # Connection already tested above
     
     print()
     print("✅ Database initialization complete!")
     return True
 
 if __name__ == "__main__":
+    # Check if DATABASE_URL is set
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        print("⚠️  DATABASE_URL environment variable not set")
+        print("⚠️  Database initialization will be skipped")
+        print("⚠️  Make sure DATABASE_URL is set in Render environment variables")
+        print("⚠️  You can initialize the database manually after deployment using Render Shell")
+        sys.exit(0)  # Don't fail the build, just skip DB init
+    
     success = init_database()
-    sys.exit(0 if success else 1)
+    if not success:
+        print()
+        print("⚠️  Database initialization failed, but build will continue")
+        print("⚠️  You can initialize the database manually after deployment:")
+        print("   1. Go to Render Dashboard > Your Service > Shell")
+        print("   2. Run: cd backend && python init_db_production.py")
+        sys.exit(0)  # Don't fail the build, allow manual initialization
+    sys.exit(0)
 
