@@ -51,7 +51,14 @@ def create_app() -> FastAPI:
 
 	@app.on_event("startup")
 	def on_startup():
-		create_all_tables()
+		# Try to create tables, but don't fail if database is not available
+		try:
+			create_all_tables()
+		except Exception as e:
+			import logging
+			logger = logging.getLogger(__name__)
+			logger.warning(f"Could not create database tables on startup: {e}")
+			logger.warning("Server will start, but database operations may fail until DATABASE_URL is configured correctly.")
 
 	return app
 
