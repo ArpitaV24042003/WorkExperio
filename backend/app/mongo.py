@@ -32,18 +32,18 @@ except Exception as e:
 # Resume collections
 # (This is a good use for Mongo)
 # ---------------------------
-resume_raw = mongo_db["resume_raw"]        # Stores original extracted text
-resume_parsed = mongo_db["resume_parsed"]  # Stores structured AI parsed output
+resume_raw = mongo_db["resume_raw"] if mongo_db else None        # Stores original extracted text
+resume_parsed = mongo_db["resume_parsed"] if mongo_db else None  # Stores structured AI parsed output
 
 # ---------------------------
 # Logs and analysis collections
 # (This is a good use for Mongo)
 # ---------------------------
-chat_logs = mongo_db["chat_logs"]
-ai_evaluation = mongo_db["ai_evaluation"]
-team_suggestions = mongo_db["team_suggestions"]
-skill_extraction_logs = mongo_db["skill_extraction_logs"]
-evaluation_logs = mongo_db["evaluation_logs"]
+chat_logs = mongo_db["chat_logs"] if mongo_db else None
+ai_evaluation = mongo_db["ai_evaluation"] if mongo_db else None
+team_suggestions = mongo_db["team_suggestions"] if mongo_db else None
+skill_extraction_logs = mongo_db["skill_extraction_logs"] if mongo_db else None
+evaluation_logs = mongo_db["evaluation_logs"] if mongo_db else None
 
 # ---------------------------
 # REMOVED: Redundant Structured collections

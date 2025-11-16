@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List
 
 
 class Settings(BaseSettings):
@@ -9,8 +8,9 @@ class Settings(BaseSettings):
 	access_token_expire_minutes: int = 60
 	database_url: str = "sqlite:///./backend/app.db"
 	env: str = "development"
-	allow_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 	log_level: str = "INFO"
+	# Note: ALLOW_ORIGINS is read directly from os.getenv in main.py, not from settings
+	# This prevents Pydantic Settings from trying to parse it as JSON
 
 	model_config = SettingsConfigDict(
 		env_file=".env",

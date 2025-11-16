@@ -96,23 +96,44 @@ def main():
         ["PORT", "ALLOW_ORIGINS", "os.getenv"],
         "Backend supports environment variables"
     ))
-    # Check requirements.txt more flexibly
+    # Check requirements.txt more flexibly (handle UTF-16 encoding)
     req_file = Path("backend/requirements.txt")
     if req_file.exists():
-        req_content = req_file.read_text(encoding='utf-8', errors='ignore').lower()
-        has_fastapi = "fastapi" in req_content
-        has_uvicorn = "uvicorn" in req_content
-        has_sqlalchemy = "sqlalchemy" in req_content
-        all_deps = has_fastapi and has_uvicorn and has_sqlalchemy
-        status = "✅" if all_deps else "⚠️"
-        print(f"{status} Backend has core dependencies: backend/requirements.txt")
-        if not all_deps:
-            missing = []
-            if not has_fastapi: missing.append("fastapi")
-            if not has_uvicorn: missing.append("uvicorn")
-            if not has_sqlalchemy: missing.append("sqlalchemy")
-            print(f"   Missing: {', '.join(missing)}")
-        checks.append(all_deps)
+        try:
+            # Try multiple encodings (UTF-16, UTF-8, latin-1)
+            req_content = None
+            for encoding in ['utf-16', 'utf-16-le', 'utf-16-be', 'utf-8', 'latin-1']:
+                try:
+                    req_content = req_file.read_text(encoding=encoding)
+                    # Check if we got valid content (not just BOM)
+                    if len(req_content) > 10 and 'fastapi' in req_content.lower():
+                        break
+                except:
+                    continue
+            
+            if req_content:
+                req_lower = req_content.lower()
+                # Check for dependencies (case-insensitive)
+                has_fastapi = "fastapi" in req_lower
+                has_uvicorn = "uvicorn" in req_lower
+                has_sqlalchemy = "sqlalchemy" in req_lower
+                all_deps = has_fastapi and has_uvicorn and has_sqlalchemy
+                status = "✅" if all_deps else "⚠️"
+                print(f"{status} Backend has core dependencies: backend/requirements.txt")
+                if not all_deps:
+                    missing = []
+                    if not has_fastapi: missing.append("fastapi")
+                    if not has_uvicorn: missing.append("uvicorn")
+                    if not has_sqlalchemy: missing.append("sqlalchemy")
+                    if missing:
+                        print(f"   Missing: {', '.join(missing)}")
+                checks.append(all_deps)
+            else:
+                print("⚠️ Backend has core dependencies: backend/requirements.txt (could not read file)")
+                checks.append(False)
+        except Exception as e:
+            print(f"⚠️ Backend has core dependencies: backend/requirements.txt (error: {e})")
+            checks.append(False)
     else:
         print("❌ Backend has core dependencies: backend/requirements.txt (file not found)")
         checks.append(False)
