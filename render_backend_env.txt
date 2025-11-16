@@ -3,13 +3,13 @@
 # Replace <PLACEHOLDERS> with actual values
 
 SECRET_KEY=TA7sorTGZPVdgEeJgpsG1magI6GrJC9dbHQcs9i4WQE
-DATABASE_URL=postgresql://workexperio_c36e_user:jOd9q65f9DWTBfeia2qpOOqMmSqMqogz@dpg-d4cafsbipnbc739be59g-a/workexperio_c36e
+DATABASE_URL=postgresql://workexperio_9aqw_user:dDNJqjphR8bpeglXUBwO4mXYfnYJRPw1@dpg-d4cb09ripnbc739bp0j0-a/workexperio_9aqw
 ALLOW_ORIGINS=https://workexperio-frontend.onrender.com
 ENV=production
 LOG_LEVEL=INFO
-MONGO_URL=<OPTIONAL_MONGODB_URL>
+MONGO_URL=mongodb+srv://workexperio_user:Arpita2403@workexperiocluster.t14xf1f.mongodb.net/
 MONGO_DB_NAME=workexperio_db
-GITHUB_CLIENT_ID=<OPTIONAL_GITHUB_CLIENT_ID>
-GITHUB_CLIENT_SECRET=<OPTIONAL_GITHUB_CLIENT_SECRET>
+GITHUB_CLIENT_ID=Ov23liJHjzJXOPjvzIq9
+GITHUB_CLIENT_SECRET=e56300f15330f4acf911826039afbf8bc2d0a694
 BACKEND_BASE_URL=https://workexperio-backend.onrender.com
 FRONTEND_URL=https://workexperio-frontend.onrender.com
