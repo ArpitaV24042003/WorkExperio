@@ -600,9 +600,15 @@ export default function CreateProject() {
 
             {/* Skill/Interest Match Info */}
             {(teamFormationMode === "skill_match" || teamFormationMode === "interest_match") && (
-              <div className="rounded-md border border-muted bg-muted/50 p-4">
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-4">
+                <p className="text-sm font-medium text-primary mb-1">
+                  🤖 AI-Powered Team Formation
+                </p>
                 <p className="text-sm text-muted-foreground">
-                  AI will automatically match team members based on {teamFormationMode === "skill_match" ? "skills" : "interests"} after you generate the project idea.
+                  AI will automatically find matching team members, assign roles, generate a project idea, and create the project - all in one click!
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  No manual steps needed. Just click "AI: Find Team & Create Project" and AI will handle everything.
                 </p>
               </div>
             )}
