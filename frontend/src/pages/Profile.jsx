@@ -80,13 +80,15 @@ export default function Profile() {
           <CardTitle>Skills</CardTitle>
           <CardDescription>Skills imported from resume or manually added.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+        <CardContent>
           {profile.skills.length ? (
-            profile.skills.map((skill) => (
-              <Badge key={skill.id} variant="outline">
-                {skill.name}
-              </Badge>
-            ))
+            <div className="flex flex-wrap gap-2">
+              {profile.skills.map((skill) => (
+                <Badge key={skill.id} variant="outline" className="whitespace-normal break-words">
+                  {skill.name}
+                </Badge>
+              ))}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">No skills listed yet.</p>
           )}
@@ -101,11 +103,16 @@ export default function Profile() {
           <CardContent className="space-y-3">
             {profile.educations.length ? (
               profile.educations.map((education) => (
-                <div key={education.id}>
-                  <p className="font-medium">{education.institution}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {education.degree} {education.field}
+                <div key={education.id} className="break-words">
+                  <p className="font-medium break-words">{education.institution}</p>
+                  <p className="text-sm text-muted-foreground break-words">
+                    {education.degree} {education.field ? `• ${education.field}` : ""}
                   </p>
+                  {(education.start_date || education.end_date) && (
+                    <p className="text-xs text-muted-foreground">
+                      {education.start_date} {education.end_date ? `- ${education.end_date}` : "- Present"}
+                    </p>
+                  )}
                 </div>
               ))
             ) : (
@@ -121,11 +128,14 @@ export default function Profile() {
           <CardContent className="space-y-3">
             {profile.experiences.length ? (
               profile.experiences.map((experience) => (
-                <div key={experience.id}>
-                  <p className="font-medium">{experience.role}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {experience.company} • {experience.start_date} - {experience.end_date || "Present"}
+                <div key={experience.id} className="break-words">
+                  <p className="font-medium break-words">{experience.role}</p>
+                  <p className="text-sm text-muted-foreground break-words">
+                    {experience.company} {experience.start_date || experience.end_date ? "•" : ""} {experience.start_date ? experience.start_date : ""} {experience.end_date ? `- ${experience.end_date}` : experience.start_date ? "- Present" : ""}
                   </p>
+                  {experience.description && (
+                    <p className="text-xs text-muted-foreground mt-1 break-words">{experience.description}</p>
+                  )}
                 </div>
               ))
             ) : (

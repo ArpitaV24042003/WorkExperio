@@ -120,9 +120,25 @@ def assign_team(
 
 @router.get("/projects/{project_id}/team", response_model=dict[str, Any])
 def get_team(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
-	if not project or not project.team_id:
+	project = db.query(Project).filter(Project.id == project_id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Allow access if user is owner or team member
+	if project.owner_id != current_user.id:
+		# Check if user is a team member
+		if project.team_id:
+			team = db.query(Team).filter(Team.id == project.team_id).first()
+			if team:
+				member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
+				if not member:
+					raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view team")
+		else:
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view team")
+	
+	if not project.team_id:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not assigned")
+	
 	team = db.query(Team).filter(Team.id == project.team_id).first()
 	members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
 	return {

@@ -13,6 +13,7 @@ export default function TeamChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+  const [userNames, setUserNames] = useState({}); // Map user_id to name
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -24,20 +25,56 @@ export default function TeamChat() {
     scrollToBottom();
   }, [messages]);
 
-  // Load previous messages
+  // Load previous messages and team members
   useEffect(() => {
-    const loadMessages = async () => {
+    const loadData = async () => {
       try {
+        // Load messages
         const { data } = await apiClient.get(`/chat/projects/${projectId}/messages`).catch(handleApiError);
         setMessages(data || []);
+        
+        // Load team members to get names
+        try {
+          const teamData = await apiClient.get(`/teams/projects/${projectId}/team`).catch(handleApiError);
+          const members = teamData.data.members || [];
+          const nameMap = {};
+          
+          // Fetch user details for each member
+          for (const member of members) {
+            try {
+              const userData = await apiClient.get(`/users/${member.user_id}/profile`).catch(() => null);
+              if (userData?.data) {
+                nameMap[member.user_id] = userData.data.name || member.user_id;
+              }
+            } catch {
+              nameMap[member.user_id] = member.user_id;
+            }
+          }
+          
+          // Add current user
+          if (user?.id) {
+            try {
+              const userData = await apiClient.get(`/users/${user.id}/profile`).catch(() => null);
+              if (userData?.data) {
+                nameMap[user.id] = userData.data.name || user.id;
+              }
+            } catch {
+              nameMap[user.id] = user.id;
+            }
+          }
+          
+          setUserNames(nameMap);
+        } catch (err) {
+          console.error("Failed to load team:", err);
+        }
       } catch (error) {
         console.error("Failed to load messages:", error);
       } finally {
         setLoading(false);
       }
     };
-    loadMessages();
-  }, [projectId]);
+    loadData();
+  }, [projectId, user?.id]);
 
   // WebSocket connection
   useEffect(() => {
@@ -107,20 +144,24 @@ export default function TeamChat() {
         ) : messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`rounded-md border p-3 ${
-                message.user_id === user?.id ? "ml-auto w-[80%] bg-primary/10" : "mr-auto w-[80%] bg-background"
-              }`}
-            >
-              <p className="text-sm font-semibold">{message.user_id === user?.id ? "You" : message.user_id}</p>
-              <p className="text-sm">{message.content}</p>
-              <p className="text-[10px] text-muted-foreground">
-                {new Date(message.created_at ?? Date.now()).toLocaleTimeString()}
-              </p>
-            </div>
-          ))
+          messages.map((message) => {
+            const senderName = userNames[message.user_id] || message.user_id;
+            const isCurrentUser = message.user_id === user?.id;
+            return (
+              <div
+                key={message.id}
+                className={`rounded-md border p-3 ${
+                  isCurrentUser ? "ml-auto w-[80%] bg-primary/10" : "mr-auto w-[80%] bg-background"
+                }`}
+              >
+                <p className="text-sm font-semibold">{isCurrentUser ? "You" : senderName}</p>
+                <p className="text-sm break-words">{message.content}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {new Date(message.created_at ?? Date.now()).toLocaleTimeString()}
+                </p>
+              </div>
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </CardContent>
