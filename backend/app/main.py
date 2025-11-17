@@ -13,6 +13,16 @@ def create_app() -> FastAPI:
 	"""
 	Create and configure the FastAPI application instance.
 	"""
+	import logging
+	import sys
+	
+	# Configure logging for Render
+	logging.basicConfig(
+		level=logging.INFO,
+		format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+		handlers=[logging.StreamHandler(sys.stdout)]
+	)
+	
 	app = FastAPI(title="WorkExperio API", version="0.1.0")
 
 	# CORS - Read from environment or use defaults
