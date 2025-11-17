@@ -1,0 +1,12 @@
+# Ensure bash scripts use LF line endings and are executable
+*.sh text eol=lf
+
+# Python files
+*.py text eol=lf
+
+# Text files
+*.txt text
+*.md text
+*.yaml text
+*.yml text
+
