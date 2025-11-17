@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocketState
+from datetime import datetime
 import time
 
 from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin
@@ -26,6 +27,41 @@ def create_app() -> FastAPI:
 		allow_methods=["*"],
 		allow_headers=["*"],
 	)
+
+	# Root and health check endpoints
+	@app.get("/")
+	async def root():
+		return {
+			"message": "WorkExperio API",
+			"version": "0.1.0",
+			"status": "running",
+			"docs": "/docs"
+		}
+	
+	@app.get("/health")
+	async def health_check():
+		"""Health check endpoint that verifies database connection"""
+		import os
+		from .db import engine
+		from sqlalchemy import text
+		
+		db_status = "unknown"
+		database_url = os.getenv("DATABASE_URL", "")
+		
+		try:
+			# Test database connection
+			with engine.connect() as conn:
+				conn.execute(text("SELECT 1"))
+				db_status = "connected"
+		except Exception as e:
+			db_status = f"error: {str(e)[:100]}"
+		
+		return {
+			"status": "healthy" if db_status == "connected" else "degraded",
+			"database": db_status,
+			"database_url_set": bool(database_url),
+			"timestamp": datetime.utcnow().isoformat()
+		}
 
 	# Mount routers
 	app.include_router(auth.router, prefix="/auth", tags=["auth"])
