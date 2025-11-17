@@ -111,7 +111,7 @@ export default function CreateProject() {
     setError("");
     
     try {
-      // If skill_match or interest_match, find team members automatically
+      // If skill_match or interest_match, find team members automatically and auto-create team
       if (teamFormationMode === "skill_match" || teamFormationMode === "interest_match") {
         const userSkills = profile?.skills?.map((skill) => skill.name) || [];
         const skillsQuery = userSkills.join(",");
@@ -126,7 +126,8 @@ export default function CreateProject() {
           // Add top matching users to team with their details
           const newMembers = data.slice(0, 3);
           const newMemberIds = newMembers.map((user) => user.user_id);
-          setTeamMembers([...teamMembers, ...newMemberIds]);
+          const allMembers = [...teamMembers, ...newMemberIds];
+          setTeamMembers(allMembers);
           
           // Store member details
           const newDetails = {};
@@ -138,13 +139,29 @@ export default function CreateProject() {
             };
           });
           setTeamMemberDetails((prev) => ({ ...prev, ...newDetails }));
+          
+          // Auto-assign roles based on skills (AI can suggest roles later)
+          const roleSuggestions = {};
+          newMembers.forEach((user) => {
+            const userSkills = (user.skills || []).map(s => s.toLowerCase());
+            if (userSkills.some(skill => ["frontend", "react", "vue", "angular", "ui", "design"].some(term => skill.includes(term)))) {
+              roleSuggestions[user.user_id] = "Frontend Developer";
+            } else if (userSkills.some(skill => ["backend", "server", "api", "database", "node", "python", "java"].some(term => skill.includes(term)))) {
+              roleSuggestions[user.user_id] = "Backend Developer";
+            } else if (userSkills.some(skill => ["data", "ml", "ai", "analytics", "science"].some(term => skill.includes(term)))) {
+              roleSuggestions[user.user_id] = "Data Scientist";
+            } else {
+              roleSuggestions[user.user_id] = "Team Member";
+            }
+          });
+          setMemberRoles((prev) => ({ ...prev, ...roleSuggestions }));
         }
       }
       
       if (teamFormationMode === "waitlist") {
         setForm((prev) => ({ ...prev, team_type: "waitlist" }));
         setStep(4); // Skip to AI generation
-      } else if (teamMembers.length > 0) {
+      } else if (teamMembers.length > 0 || (teamFormationMode === "skill_match" || teamFormationMode === "interest_match")) {
         setForm((prev) => ({ ...prev, team_type: "team" }));
         setStep(2); // Move to domain/role selection
       } else {

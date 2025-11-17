@@ -1,12 +1,41 @@
 import { create } from "zustand";
 
-const persistedToken = localStorage.getItem("token");
-const persistedUser = localStorage.getItem("user");
+// Initialize from localStorage
+const getPersistedToken = () => {
+  try {
+    return localStorage.getItem("token") || "";
+  } catch {
+    return "";
+  }
+};
 
-export const useAuthStore = create((set) => ({
-  token: persistedToken || "",
-  user: persistedUser ? JSON.parse(persistedUser) : null,
-  isAuthenticated: Boolean(persistedToken),
+const getPersistedUser = () => {
+  try {
+    const userStr = localStorage.getItem("user");
+    return userStr ? JSON.parse(userStr) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const useAuthStore = create((set, get) => ({
+  token: getPersistedToken(),
+  user: getPersistedUser(),
+  isAuthenticated: Boolean(getPersistedToken()),
+  
+  // Initialize auth state on mount (for page refresh)
+  initialize: () => {
+    const token = getPersistedToken();
+    const user = getPersistedUser();
+    if (token && !get().isAuthenticated) {
+      set({
+        token,
+        user,
+        isAuthenticated: true,
+      });
+    }
+  },
+  
   setCredentials: ({ token, user }) =>
     set(() => {
       if (token) {

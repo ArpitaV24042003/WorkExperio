@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "./store/auth";
 import Login from "./pages/Login";
@@ -18,13 +19,29 @@ import { ShellLayout } from "./components/ShellLayout";
 
 const ProtectedRoute = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  if (!isAuthenticated) {
+  const initialize = useAuthStore((state) => state.initialize);
+  
+  // Initialize auth state on mount (for page refresh)
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+  
+  // Check if token exists in localStorage (for page refresh)
+  const hasToken = localStorage.getItem("token");
+  if (!isAuthenticated && !hasToken) {
     return <Navigate to="/login" replace />;
   }
+  
   return children;
 };
 
 export default function App() {
+  const initialize = useAuthStore((state) => state.initialize);
+  
+  // Initialize auth state on app mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

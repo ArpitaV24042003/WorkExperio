@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
 import { apiClient, handleApiError } from "../lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
@@ -8,17 +8,32 @@ import { Badge } from "../components/ui/badge";
 
 export default function ProjectDetails() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [project, setProject] = useState(null);
   const [team, setTeam] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [memberDetails, setMemberDetails] = useState({}); // {user_id: {name, email}}
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadProject = async () => {
       try {
-        const { data } = await apiClient.get(`/projects/${projectId}`).catch(handleApiError);
+        const { data } = await apiClient.get(`/projects/${projectId}`).catch((err) => {
+          if (err.response?.status === 401 || err.response?.status === 403) {
+            setError("You don't have access to this project");
+            // Don't navigate immediately - let user see the error
+            return null;
+          }
+          throw err;
+        });
+        
+        if (!data) {
+          setLoading(false);
+          return;
+        }
+        
         setProject(data);
         
         // Load team if it exists
@@ -53,6 +68,7 @@ export default function ProjectDetails() {
         }
       } catch (error) {
         console.error(error);
+        setError(error.message || "Failed to load project");
       } finally {
         setLoading(false);
       }
@@ -61,11 +77,27 @@ export default function ProjectDetails() {
   }, [projectId]);
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading project...</p>;
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-sm text-muted-foreground">Loading project...</p>
+      </div>
+    );
   }
 
-  if (!project) {
-    return <p className="text-sm text-destructive">Project not found.</p>;
+  if (error || !project) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <p className="text-sm text-destructive">{error || "Project not found or you don't have access to it."}</p>
+        <div className="flex gap-2">
+          <Button asChild>
+            <Link to="/projects">Back to Projects</Link>
+          </Button>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const isTeamLeader = project?.owner_id === user?.id;
