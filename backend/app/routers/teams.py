@@ -259,3 +259,50 @@ def waitlist_status(project_id: str, current_user: User = Depends(get_current_us
 		"entries": status_entries,
 		"auto_solo_at": entries[0].created_at + WAITLIST_DURATION if entries else None,
 	}
+
+
+@router.post("/waitlist/process-expired")
+def process_expired_waitlists(db: Session = Depends(get_db)):
+	"""
+	Process expired waitlists (older than 7 days) and convert them to solo projects.
+	This should be called periodically (e.g., via a cron job or scheduled task).
+	"""
+	expired_threshold = datetime.utcnow() - WAITLIST_DURATION
+	
+	# Find expired waitlist entries
+	expired_entries = (
+		db.query(ProjectWaitlist)
+		.join(Project, ProjectWaitlist.project_id == Project.id)
+		.filter(Project.team_type == "waitlist")
+		.filter(ProjectWaitlist.created_at < expired_threshold)
+		.all()
+	)
+	
+	processed = []
+	for entry in expired_entries:
+		project = db.query(Project).filter(Project.id == entry.project_id).first()
+		if project and project.team_type == "waitlist":
+			# Convert to solo project
+			project.team_type = "solo"
+			
+			# Ensure creator is in the team
+			if project.team_id:
+				team = db.query(Team).filter(Team.id == project.team_id).first()
+				if team:
+					# Check if creator is already a member
+					existing_member = db.query(TeamMember).filter(
+						TeamMember.team_id == team.id,
+						TeamMember.user_id == project.owner_id
+					).first()
+					if not existing_member:
+						db.add(TeamMember(team_id=team.id, user_id=project.owner_id, role="Solo Developer"))
+			
+			# Remove waitlist entry
+			db.delete(entry)
+			processed.append(project.id)
+	
+	db.commit()
+	return {
+		"message": f"Processed {len(processed)} expired waitlists",
+		"processed_project_ids": processed,
+	}

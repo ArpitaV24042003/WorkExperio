@@ -30,6 +30,8 @@ export default function CreateProject() {
   const [multipleIdeas, setMultipleIdeas] = useState([]); // Store multiple AI-generated ideas
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false); // Show waitlist prompt when no team found
+  const [waitlistData, setWaitlistData] = useState(null); // Store project data when waiting for team
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -166,16 +168,36 @@ export default function CreateProject() {
             match_mode: teamFormationMode,
             domain: domain || "",
             problem_statement: problemStatement || "",
-          }).catch(handleApiError);
+          }, { timeout: 60000 }).catch(handleApiError); // 60 second timeout for AI operations
           
-          if (data && data.project) {
+          if (data) {
+            // Check if user needs to decide (no team found)
+            if (data.needs_user_decision || (data.matched_count === 0 && !data.project)) {
+              // No team members found - show waitlist prompt
+              setWaitlistData(data);
+              setShowWaitlistPrompt(true);
+              setLoading(false);
+              return;
+            }
+            
             // Project and team are already created!
-            // Navigate directly to project
-            navigate(`/projects/${data.project.id}`);
-            return;
+            if (data.project) {
+              // Show success message
+              if (data.matched_count > 0) {
+                setError(`✅ Success! Created team with ${data.team_size} members. ${data.message || ""}`);
+              } else {
+                setError(`✅ ${data.message || "Project created successfully."}`);
+              }
+              // Navigate directly to project after a brief delay
+              setTimeout(() => {
+                navigate(`/projects/${data.project.id}`);
+              }, 2000);
+              return;
+            }
           }
         } catch (autoErr) {
           console.error("Auto-create failed, falling back to manual flow:", autoErr);
+          setError(`Auto-create failed: ${autoErr.message}. Trying manual team search...`);
           // Fall back to manual flow if auto-create fails
         }
         
@@ -386,6 +408,93 @@ export default function CreateProject() {
       </div>
 
       {error ? <p className="text-sm text-destructive text-center">{error}</p> : null}
+      
+      {/* Waitlist Prompt Modal */}
+      {showWaitlistPrompt && waitlistData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <Card className="max-w-md w-full mx-4">
+            <CardHeader>
+              <CardTitle>No Team Members Found</CardTitle>
+              <CardDescription>
+                We couldn't find any matching team members right now. Would you like to wait for 7 days while we search for compatible teammates?
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+                <p className="text-sm font-medium mb-1">⏰ Waitlist Option:</p>
+                <p className="text-xs text-muted-foreground">
+                  • We'll search for compatible team members for 7 days<br/>
+                  • If no team is found within 7 days, a solo project will be created automatically<br/>
+                  • You can start working on the project immediately
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      // Create project with waitlist
+                      const { data } = await apiClient.post("/ai/auto-create-project-with-team", {
+                        match_mode: teamFormationMode,
+                        domain: domain || "",
+                        problem_statement: problemStatement || "",
+                        wait_for_team: true, // User wants to wait
+                      }, { timeout: 60000 }).catch(handleApiError);
+                      
+                      if (data && data.project) {
+                        setError(`✅ ${data.message || "You've been added to the waitlist. We'll notify you when team members are found."}`);
+                        setTimeout(() => {
+                          navigate(`/projects/${data.project.id}`);
+                        }, 2000);
+                      }
+                    } catch (err) {
+                      setError(`Failed to create waitlist project: ${err.message}`);
+                    } finally {
+                      setLoading(false);
+                      setShowWaitlistPrompt(false);
+                    }
+                  }}
+                  disabled={loading}
+                  className="flex-1"
+                >
+                  {loading ? "Creating..." : "Yes, Wait for Team"}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      // Create solo project immediately
+                      const { data } = await apiClient.post("/ai/auto-create-project-with-team", {
+                        match_mode: teamFormationMode,
+                        domain: domain || "",
+                        problem_statement: problemStatement || "",
+                        wait_for_team: false, // User doesn't want to wait
+                      }, { timeout: 60000 }).catch(handleApiError);
+                      
+                      if (data && data.project) {
+                        setError(`✅ ${data.message || "Solo project created successfully."}`);
+                        setTimeout(() => {
+                          navigate(`/projects/${data.project.id}`);
+                        }, 2000);
+                      }
+                    } catch (err) {
+                      setError(`Failed to create solo project: ${err.message}`);
+                    } finally {
+                      setLoading(false);
+                      setShowWaitlistPrompt(false);
+                    }
+                  }}
+                  variant="outline"
+                  disabled={loading}
+                  className="flex-1"
+                >
+                  {loading ? "Creating..." : "No, Create Solo Project"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Step 1: Team Formation */}
       {step === 1 && (
