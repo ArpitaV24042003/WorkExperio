@@ -37,10 +37,40 @@ export default function CreateProject() {
     const fetchProfile = async () => {
       if (!user?.id) return;
       try {
-        const { data } = await apiClient.get(`/users/${user.id}/profile`).catch(handleApiError);
+        const { data } = await apiClient.get(`/users/${user.id}/profile`, { timeout: 10000 }).catch(handleApiError);
         setProfile(data);
+        // Initialize creator as a team member with leader role
+        if (data) {
+          setTeamMemberDetails((prev) => ({
+            ...prev,
+            [user.id]: {
+              name: data.name || user.id,
+              email: data.email || "",
+              skills: data.skills?.map(s => s.name) || [],
+            },
+          }));
+          setMemberRoles((prev) => ({
+            ...prev,
+            [user.id]: "Team Leader",
+          }));
+        }
       } catch (err) {
-        console.error(err);
+        console.error("Failed to fetch profile:", err);
+        // Still initialize creator even if profile fetch fails
+        if (user?.id) {
+          setTeamMemberDetails((prev) => ({
+            ...prev,
+            [user.id]: {
+              name: user.name || user.id,
+              email: user.email || "",
+              skills: [],
+            },
+          }));
+          setMemberRoles((prev) => ({
+            ...prev,
+            [user.id]: "Team Leader",
+          }));
+        }
       }
     };
     fetchProfile();
@@ -374,6 +404,15 @@ export default function CreateProject() {
       setLoading(false);
     }
   };
+
+  // Show loading state if user is not yet available
+  if (!user?.id) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
