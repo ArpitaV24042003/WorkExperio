@@ -188,7 +188,7 @@ class ChatMessageRead(BaseSchema):
 
 
 class AssistantChatRequest(BaseModel):
-	project_id: str
+	project_id: Optional[str] = None
 	user_id: str
 	message: str
 

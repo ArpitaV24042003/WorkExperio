@@ -15,25 +15,37 @@ router = APIRouter()
 
 @router.post("/assistant-chat", response_model=AssistantChatResponse)
 def assistant_chat(payload: AssistantChatRequest, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-	project = db.query(Project).filter(Project.id == payload.project_id).first()
-	if not project:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
-	recent_messages = (
-		db.query(ChatMessage)
-		.filter(ChatMessage.project_id == payload.project_id)
-		.order_by(ChatMessage.created_at.desc())
-		.limit(10)
-		.all()
-	)
-	context = {
-		"recent_messages": [msg.content for msg in recent_messages],
-		"suggested_tasks": [
-			"Review current milestone progress",
-			"Pair with a teammate on blockers",
-			"Update task board status",
-		],
-	}
+	# Allow project_id to be None for general AI assistance
+	if payload.project_id:
+		project = db.query(Project).filter(Project.id == payload.project_id).first()
+		if not project:
+			raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+		
+		recent_messages = (
+			db.query(ChatMessage)
+			.filter(ChatMessage.project_id == payload.project_id)
+			.order_by(ChatMessage.created_at.desc())
+			.limit(10)
+			.all()
+		)
+		context = {
+			"recent_messages": [msg.content for msg in recent_messages],
+			"suggested_tasks": [
+				"Review current milestone progress",
+				"Pair with a teammate on blockers",
+				"Update task board status",
+			],
+		}
+	else:
+		context = {
+			"recent_messages": [],
+			"suggested_tasks": [
+				"Start a new project",
+				"Update your profile",
+				"Find team members",
+			],
+		}
+	
 	response = generate_assistant_response(payload.message, context)
 	return AssistantChatResponse(response=response["response"], suggestions=response["suggestions"])
 
