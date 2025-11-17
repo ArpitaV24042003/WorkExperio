@@ -120,6 +120,7 @@ class TeamMember(Base):
 	team_id: Mapped[str] = mapped_column(String(36), ForeignKey("teams.id"))
 	user_id: Mapped[str] = mapped_column(String(36))
 	role: Mapped[Optional[str]] = mapped_column(String(100))
+	task: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Assigned task for this team member
 	joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 	team: Mapped["Team"] = relationship(back_populates="members")

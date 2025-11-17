@@ -146,6 +146,7 @@ class TeamAssignRequest(BaseModel):
 	project_id: str
 	user_ids: List[str]
 	role_map: Optional[Dict[str, str]] = None
+	task_map: Optional[Dict[str, str]] = None  # Map of user_id to assigned task
 
 
 class TeamRead(BaseSchema):
@@ -159,6 +160,7 @@ class TeamMemberRead(BaseSchema):
 	team_id: str
 	user_id: str
 	role: Optional[str]
+	task: Optional[str]  # Assigned task
 	joined_at: datetime
 
 

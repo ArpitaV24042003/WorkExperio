@@ -122,10 +122,18 @@ def assign_team(
 
 	for user_id in user_ids:
 		role = payload.role_map.get(user_id) if payload.role_map else None
+		task = payload.task_map.get(user_id) if payload.task_map else None
+		
 		# Set creator as Team Leader if no role specified
 		if user_id == current_user.id and not role:
 			role = "Team Leader"
-		db.add(TeamMember(team_id=team.id, user_id=user_id, role=role))
+		
+		# If creator has no task but there's a problem statement, generate a default task
+		if user_id == current_user.id and not task and project.description:
+			# Generate a task for the creator based on their role and project description
+			task = f"As Team Leader, coordinate and manage the project: {project.description[:100]}..."
+		
+		db.add(TeamMember(team_id=team.id, user_id=user_id, role=role, task=task))
 
 	project.team_id = team.id
 	project.team_type = "team" if len(user_ids) > 1 else "solo"
@@ -235,9 +243,20 @@ def join_waitlist(
 
 @router.get("/projects/{project_id}/waitlist-status")
 def waitlist_status(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	project = db.query(Project).filter(Project.id == project_id).first()
 	if not project:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Allow access if user is owner or team member
+	if project.owner_id != current_user.id:
+		if project.team_id:
+			team = db.query(Team).filter(Team.id == project.team_id).first()
+			if team:
+				member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
+				if not member:
+					raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view waitlist status")
+		else:
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view waitlist status")
 
 	entries = db.query(ProjectWaitlist).filter(ProjectWaitlist.project_id == project_id).all()
 	now = datetime.now(timezone.utc)

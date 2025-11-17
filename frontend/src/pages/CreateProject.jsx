@@ -343,6 +343,13 @@ export default function CreateProject() {
         allRoles[user?.id] = "Team Leader";
       }
       
+      // Ensure creator has a task if not already assigned
+      const allTasks = { ...assignedTasks };
+      if (!allTasks[user?.id] && problemStatement) {
+        // Generate a default task for the creator based on problem statement
+        allTasks[user?.id] = `As Team Leader, coordinate and manage the project. Focus on: ${problemStatement.substring(0, 100)}...`;
+      }
+      
       // Always create team with creator as member (even for solo projects)
       if (data.id) {
         try {
@@ -350,6 +357,7 @@ export default function CreateProject() {
             project_id: data.id,
             user_ids: allTeamMembers.length > 0 ? allTeamMembers : [user?.id], // Ensure at least creator
             role_map: allRoles, // Include assigned roles
+            task_map: allTasks, // Include assigned tasks
           }, { timeout: 10000 }).catch(handleApiError);
         } catch (teamErr) {
           console.error("Failed to assign team:", teamErr);

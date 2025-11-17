@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import warnings
+import logging
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -8,7 +9,9 @@ from passlib.context import CryptContext
 from .config import settings
 
 # Suppress bcrypt version warning (known issue with passlib and newer bcrypt)
-warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
+# This warning is harmless - passlib works fine with newer bcrypt versions
+warnings.filterwarnings("ignore", message=".*bcrypt.*", category=UserWarning)
+logging.getLogger("passlib").setLevel(logging.ERROR)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
