@@ -49,29 +49,56 @@ export default function CreateProject() {
     setTeamMembers(teamMembers.filter((id) => id !== memberId));
   };
 
-  const handleTeamFormationNext = () => {
-    if (teamFormationMode === "waitlist") {
-      setForm((prev) => ({ ...prev, team_type: "waitlist" }));
-    } else if (teamMembers.length > 0) {
-      setForm((prev) => ({ ...prev, team_type: "team" }));
-    } else {
-      setForm((prev) => ({ ...prev, team_type: "none" }));
+  const handleTeamFormationNext = async () => {
+    setLoading(true);
+    setError("");
+    
+    try {
+      // If skill_match or interest_match, find team members automatically
+      if (teamFormationMode === "skill_match" || teamFormationMode === "interest_match") {
+        const userSkills = profile?.skills?.map((skill) => skill.name) || [];
+        const skillsQuery = userSkills.join(",");
+        
+        const endpoint = teamFormationMode === "skill_match" 
+          ? `/users/search/by-skills?skills=${encodeURIComponent(skillsQuery)}&limit=5`
+          : `/users/search/by-interests?interests=${encodeURIComponent(skillsQuery)}&limit=5`;
+        
+        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        
+        if (data && data.length > 0) {
+          // Add top matching users to team
+          const matchedMembers = data.slice(0, 3).map((user) => user.user_id);
+          setTeamMembers([...teamMembers, ...matchedMembers]);
+        }
+      }
+      
+      if (teamFormationMode === "waitlist") {
+        setForm((prev) => ({ ...prev, team_type: "waitlist" }));
+      } else if (teamMembers.length > 0) {
+        setForm((prev) => ({ ...prev, team_type: "team" }));
+      } else {
+        setForm((prev) => ({ ...prev, team_type: "none" }));
+      }
+      setStep(2); // Move to AI generation step
+    } catch (err) {
+      setError(err.message || "Failed to find team members");
+    } finally {
+      setLoading(false);
     }
-    setStep(2); // Move to AI generation step
   };
 
   const generateAiIdeaFromTeam = async () => {
     setLoading(true);
     setError("");
     try {
-      // Collect all team member skills
-      const allSkills = profile?.skills?.map((skill) => skill.name) ?? [];
+      // Collect current user's skills
+      const currentUserSkills = profile?.skills?.map((skill) => skill.name) ?? [];
       
-      // For now, use current user's skills. In future, fetch team member profiles
+      // Pass team member IDs - backend will fetch their skills
       const payload = {
-        skills: allSkills,
+        skills: currentUserSkills, // Base skills from current user
         experience_level: profile?.experiences?.length ? "intermediate" : "beginner",
-        candidate_profiles: teamMembers.map((id) => ({ user_id: id, skills: [] })), // Placeholder
+        candidate_profiles: teamMembers.map((id) => ({ user_id: id, skills: [] })), // Backend will fetch skills
       };
       
       const { data } = await apiClient.post("/projects/ai-generate", payload).catch(handleApiError);

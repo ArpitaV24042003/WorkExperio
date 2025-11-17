@@ -282,3 +282,71 @@ def get_stats(user_id: str, current_user: User = Depends(get_current_user), db: 
 		"ai_score": stats.ai_score,
 		"level": level,
 	}
+
+
+@router.get("/search/by-skills")
+def search_users_by_skills(
+	skills: str,  # Comma-separated skills
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+	limit: int = 10,
+):
+	"""
+	Search for users who have matching skills.
+	Returns users with their skills for team matching.
+	"""
+	skill_list = [s.strip().lower() for s in skills.split(",") if s.strip()]
+	if not skill_list:
+		return []
+	
+	# Find users with matching skills
+	users_with_skills = (
+		db.query(User, Skill)
+		.join(Skill, User.id == Skill.user_id)
+		.filter(Skill.name.in_([s.capitalize() for s in skill_list]))
+		.filter(User.id != current_user.id)  # Exclude current user
+		.filter(User.profile_completed == True)  # Only completed profiles
+		.all()
+	)
+	
+	# Group by user and collect their skills
+	user_skill_map = {}
+	for user, skill in users_with_skills:
+		if user.id not in user_skill_map:
+			user_skill_map[user.id] = {
+				"user_id": user.id,
+				"name": user.name,
+				"email": user.email,
+				"skills": [],
+			}
+		user_skill_map[user.id]["skills"].append(skill.name)
+	
+	# Calculate match scores and sort
+	results = []
+	for user_data in user_skill_map.values():
+		match_count = len(set(s.lower() for s in user_data["skills"]) & set(skill_list))
+		results.append({
+			**user_data,
+			"match_score": match_count,
+			"total_skills": len(user_data["skills"]),
+		})
+	
+	# Sort by match score and return top results
+	results.sort(key=lambda x: (x["match_score"], x["total_skills"]), reverse=True)
+	return results[:limit]
+
+
+@router.get("/search/by-interests")
+def search_users_by_interests(
+	interests: str,  # Comma-separated interests (using skills as proxy for now)
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+	limit: int = 10,
+):
+	"""
+	Search for users with similar interests.
+	For now, uses skills as a proxy for interests.
+	In future, can add a separate interests field.
+	"""
+	# Use skills as proxy for interests
+	return search_users_by_skills(interests, current_user, db, limit)

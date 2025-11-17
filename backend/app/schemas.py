@@ -137,7 +137,7 @@ class CandidateProfile(BaseModel):
 
 
 class TeamSuggestionRequest(BaseModel):
-	project_id: str
+	project_id: Optional[str] = None  # Optional for pre-project team formation
 	required_skills: List[str] = []
 	candidate_profiles: List[CandidateProfile] = []
 
