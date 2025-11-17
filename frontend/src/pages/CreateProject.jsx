@@ -87,15 +87,16 @@ export default function CreateProject() {
     }
     
     setSearching(true);
+    setError(""); // Clear previous errors
     try {
       let endpoint = "";
       if (searchMode === "email") {
         endpoint = `/users/search/by-email?email=${encodeURIComponent(searchQuery)}`;
-        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        const { data } = await apiClient.get(endpoint, { timeout: 10000 }).catch(handleApiError);
         setSearchResults(data ? [data] : []);
       } else if (searchMode === "name") {
         endpoint = `/users/search/by-name?name=${encodeURIComponent(searchQuery)}&limit=5`;
-        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        const { data } = await apiClient.get(endpoint, { timeout: 10000 }).catch(handleApiError);
         setSearchResults(data || []);
       } else {
         // user_id mode - if it looks like a valid UUID, just add it directly
@@ -103,44 +104,116 @@ export default function CreateProject() {
         setSearchResults([]);
       }
     } catch (err) {
+      console.error("Search error:", err);
       setSearchResults([]);
+      // Don't show error for 404 (user not found) - that's expected
+      if (err?.response?.status !== 404) {
+        setError("Failed to search users. Please try again.");
+      }
     } finally {
       setSearching(false);
     }
   };
 
   const addMemberFromSearch = async (user) => {
-    const userId = user.user_id || user.id;
-    if (userId && !teamMembers.includes(userId)) {
-      setTeamMembers([...teamMembers, userId]);
-      // Store member details
-      setTeamMemberDetails((prev) => ({
-        ...prev,
-        [userId]: {
-          name: user.name || userId,
-          email: user.email || "",
-          skills: user.skills || [],
-        },
-      }));
-      setSearchQuery("");
-      setSearchResults([]);
+    try {
+      const userId = user.user_id || user.id;
+      if (!userId) {
+        setError("Invalid user data");
+        return;
+      }
+      
+      // Don't add creator again if already in list
+      if (userId === user?.id) {
+        setError("You are already the team leader");
+        return;
+      }
+      
+      if (userId && !teamMembers.includes(userId)) {
+        setTeamMembers([...teamMembers, userId]);
+        // Store member details
+        setTeamMemberDetails((prev) => ({
+          ...prev,
+          [userId]: {
+            name: user.name || userId,
+            email: user.email || "",
+            skills: user.skills || [],
+          },
+        }));
+        setSearchQuery("");
+        setSearchResults([]);
+        setError(""); // Clear any previous errors
+      } else {
+        setError("User already added to team");
+      }
+    } catch (err) {
+      console.error("Error adding member:", err);
+      setError("Failed to add team member. Please try again.");
     }
   };
 
   const addManualMember = () => {
-    if (manualMemberId && !teamMembers.includes(manualMemberId)) {
-      setTeamMembers([...teamMembers, manualMemberId]);
-      setManualMemberId("");
+    try {
+      if (!manualMemberId || !manualMemberId.trim()) {
+        setError("Please enter a valid User ID");
+        return;
+      }
+      
+      const userId = manualMemberId.trim();
+      
+      // Don't add creator again
+      if (userId === user?.id) {
+        setError("You are already the team leader");
+        setManualMemberId("");
+        return;
+      }
+      
+      if (!teamMembers.includes(userId)) {
+        setTeamMembers([...teamMembers, userId]);
+        // Store basic member details (will be fetched later if needed)
+        setTeamMemberDetails((prev) => ({
+          ...prev,
+          [userId]: {
+            name: userId,
+            email: "",
+            skills: [],
+          },
+        }));
+        setManualMemberId("");
+        setError(""); // Clear any previous errors
+      } else {
+        setError("User already added to team");
+        setManualMemberId("");
+      }
+    } catch (err) {
+      console.error("Error adding manual member:", err);
+      setError("Failed to add team member. Please try again.");
     }
   };
 
   const removeMember = (memberId) => {
+    // Don't allow removing the creator
+    if (memberId === user?.id) {
+      setError("You cannot remove yourself as team leader");
+      return;
+    }
     setTeamMembers(teamMembers.filter((id) => id !== memberId));
-    // Remove role when member is removed
+    // Remove role and task when member is removed
     setMemberRoles((prev) => {
       const newRoles = { ...prev };
       delete newRoles[memberId];
       return newRoles;
+    });
+    setAssignedTasks((prev) => {
+      const newTasks = { ...prev };
+      delete newTasks[memberId];
+      return newTasks;
+    });
+    // Remove from team member details
+    setTeamMemberDetails((prev) => {
+      const newDetails = { ...prev };
+      delete newDetails[memberId];
+      return newDetails;
     });
   };
 
@@ -190,6 +263,19 @@ export default function CreateProject() {
     setError("");
     
     try {
+      // For manual mode, just proceed to next step if members are added
+      if (teamFormationMode === "manual") {
+        if (teamMembers.length > 0) {
+          setForm((prev) => ({ ...prev, team_type: "team" }));
+          setStep(2); // Move to domain/role selection
+        } else {
+          setForm((prev) => ({ ...prev, team_type: "none" }));
+          setStep(4); // Skip to AI generation if no members
+        }
+        setLoading(false);
+        return;
+      }
+      
       // If skill_match or interest_match, use fully automated AI flow
       if (teamFormationMode === "skill_match" || teamFormationMode === "interest_match") {
         // Use the automated endpoint that does everything
@@ -333,12 +419,12 @@ export default function CreateProject() {
         // Store all ideas for selection
         setMultipleIdeas(data.ideas);
       } else {
-        setAiIdea(data);
+      setAiIdea(data);
         setForm((prev) => ({
           ...prev,
           title: data.title || prev.title,
           description: data.description || prev.description,
-          ai_generated: true,
+        ai_generated: true,
         }));
       }
       setStep(5); // Move to task assignment step
@@ -741,20 +827,40 @@ export default function CreateProject() {
                 {/* Team Members List */}
                 {teamMembers.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Team Members ({teamMembers.length}):</p>
-                    <div className="flex flex-wrap gap-2">
-                      {teamMembers.map((memberId) => (
-                        <Badge key={memberId} variant="secondary" className="flex items-center gap-2">
-                          {memberId}
-                          <button
-                            type="button"
-                            onClick={() => removeMember(memberId)}
-                            className="ml-1 hover:text-destructive"
-                          >
-                            ×
-                          </button>
-                        </Badge>
-                      ))}
+                    <p className="text-sm font-medium">Team Members ({teamMembers.length + (user?.id ? 1 : 0)}):</p>
+                    <div className="space-y-2">
+                      {/* Show creator */}
+                      {user?.id && (
+                        <div className="rounded-md border p-2 bg-primary/5">
+                          <p className="font-medium text-sm">{teamMemberDetails[user.id]?.name || user.id} (You - Team Leader)</p>
+                        </div>
+                      )}
+                      {/* Show other members */}
+                      {teamMembers.filter(id => id !== user?.id).map((memberId) => {
+                        const memberInfo = teamMemberDetails[memberId] || { name: memberId };
+                        return (
+                          <div key={memberId} className="rounded-md border p-2 flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-sm">{memberInfo.name}</p>
+                              {memberInfo.email && <p className="text-xs text-muted-foreground">{memberInfo.email}</p>}
+                              {memberInfo.skills && memberInfo.skills.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {memberInfo.skills.slice(0, 3).map((skill, idx) => (
+                                    <Badge key={idx} variant="outline" className="text-xs">{skill}</Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeMember(memberId)}
+                              className="ml-1 hover:text-destructive text-lg font-bold"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -786,9 +892,16 @@ export default function CreateProject() {
             )}
 
             <div className="flex justify-end">
-              <Button onClick={handleTeamFormationNext} disabled={loading}>
-                {teamFormationMode === "skill_match" || teamFormationMode === "interest_match" 
-                  ? (loading ? "AI is working..." : "🤖 AI: Find Team & Create Project")
+              <Button 
+                onClick={handleTeamFormationNext} 
+                disabled={loading}
+                type="button"
+              >
+                {loading ? "Processing..." : 
+                 teamFormationMode === "skill_match" || teamFormationMode === "interest_match" 
+                  ? "🤖 AI: Find Team & Create Project"
+                  : teamFormationMode === "waitlist"
+                  ? "Next: Generate Project Idea"
                   : teamMembers.length > 0 
                   ? "Next: Domain & Roles" 
                   : "Next: Generate Project Idea"}
@@ -1163,15 +1276,15 @@ export default function CreateProject() {
 
       {/* Step 6: Create Project */}
       {step === 6 && (
-        <Card>
-          <CardHeader>
+      <Card>
+        <CardHeader>
             <CardTitle>Create Project</CardTitle>
             <CardDescription>Review and finalize your project details. Title and description can be edited or left as AI-generated.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-4" onSubmit={createProject}>
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={createProject}>
+            <div className="space-y-2">
+              <Label htmlFor="title">Title</Label>
                 <Input
                   id="title"
                   name="title"
@@ -1180,19 +1293,19 @@ export default function CreateProject() {
                   placeholder="Project title (required)"
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <textarea
-                  id="description"
-                  name="description"
-                  value={form.description}
-                  onChange={handleChange}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <textarea
+                id="description"
+                name="description"
+                value={form.description}
+                onChange={handleChange}
                   placeholder="Project description (required)"
-                  required
-                  className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
+                required
+                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
               {teamMembers.length > 0 && (
                 <div className="rounded-md border p-3">
                   <p className="text-sm font-medium mb-2">Team will be assigned:</p>
@@ -1224,14 +1337,14 @@ export default function CreateProject() {
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={() => setStep(5)} className="flex-1">
                   Back
-                </Button>
+            </Button>
                 <Button type="submit" disabled={loading} className="flex-1">
                   {loading ? "Creating..." : "Create Project"}
-                </Button>
+          </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
+        </CardContent>
+      </Card>
       )}
     </div>
   );

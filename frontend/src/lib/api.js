@@ -21,13 +21,31 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only handle auth errors for actual authentication failures
+    // Don't logout on expected 401s (like checking if user exists)
     if (error.response?.status === 401 || error.response?.status === 403) {
-      // Only logout if we're not already on login/signup page
       const currentPath = window.location.pathname;
-      if (!currentPath.includes("/login") && !currentPath.includes("/signup")) {
-        useAuthStore.getState().logout();
-        // Don't redirect immediately - let the component handle it
-        // This prevents "not found" flash on refresh
+      const authStore = useAuthStore.getState();
+      
+      // Only logout if:
+      // 1. We have a token (meaning we thought we were logged in)
+      // 2. We're not on login/signup pages
+      // 3. The error is not from a public endpoint
+      const isPublicEndpoint = error.config?.url?.includes("/auth/") || 
+                               error.config?.url?.includes("/public/");
+      
+      if (authStore.token && 
+          !currentPath.includes("/login") && 
+          !currentPath.includes("/signup") &&
+          !isPublicEndpoint) {
+        // Token is invalid, logout
+        authStore.logout();
+        // Redirect to login after a short delay to prevent flash
+        setTimeout(() => {
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
+        }, 100);
       }
     }
     return Promise.reject(error);

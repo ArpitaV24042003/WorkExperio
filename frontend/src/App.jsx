@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuthStore } from "./store/auth";
 import Login from "./pages/Login";
@@ -18,15 +18,31 @@ import Settings from "./pages/Settings";
 import { ShellLayout } from "./components/ShellLayout";
 
 const ProtectedRoute = ({ children }) => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const initialize = useAuthStore((state) => state.initialize);
+  const { isAuthenticated, initialize, token } = useAuthStore();
+  const [isChecking, setIsChecking] = useState(true);
   
   // Initialize auth state on mount (for page refresh)
   useEffect(() => {
     initialize();
-  }, [initialize]);
+    // Check token in localStorage
+    const storedToken = localStorage.getItem("token");
+    if (storedToken && !token) {
+      // Token exists but not in store, re-initialize
+      initialize();
+    }
+    setIsChecking(false);
+  }, [initialize, token]);
   
-  // Check if token exists in localStorage (for page refresh)
+  // Show loading while checking auth
+  if (isChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
+  
+  // Check if authenticated or has token
   const hasToken = localStorage.getItem("token");
   if (!isAuthenticated && !hasToken) {
     return <Navigate to="/login" replace />;
