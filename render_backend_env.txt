@@ -3,7 +3,7 @@
 # Replace <PLACEHOLDERS> with actual values
 
 SECRET_KEY=TA7sorTGZPVdgEeJgpsG1magI6GrJC9dbHQcs9i4WQE
-DATABASE_URL=postgresql://workexperio_9aqw_user:dDNJqjphR8bpeglXUBwO4mXYfnYJRPw1@dpg-d4cb09ripnbc739bp0j0-a/workexperio_9aqw
+DATABASE_URL=postgresql://workexperio_sopi_user:iF5kjz3zyGYDqj8f1Cxer4Bsa4ciJZaK@dpg-d4ddu96mcj7s73dvtml0-a/workexperio_sopi
 ALLOW_ORIGINS=https://workexperio-frontend.onrender.com
 ENV=production
 LOG_LEVEL=INFO
