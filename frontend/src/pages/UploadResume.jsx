@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiClient, handleApiError } from "../lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 
 export default function UploadResume() {
+  const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,6 +26,10 @@ export default function UploadResume() {
       });
       setStatus("Resume uploaded and parsed successfully.");
       setFile(null);
+      // Navigate to profile setup after successful upload
+      setTimeout(() => {
+        navigate("/profile-setup");
+      }, 1500);
     } catch (error) {
       handleApiError(error);
       setStatus(error.message);

@@ -6,12 +6,17 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Badge } from "../components/ui/badge";
 
 export default function CreateProject() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [step, setStep] = useState(1); // 1: Team Formation, 2: AI Generation, 3: Create Project
   const [profile, setProfile] = useState(null);
-  const [form, setForm] = useState({ title: "", description: "", ai_generated: false });
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [teamFormationMode, setTeamFormationMode] = useState("manual"); // manual, skill_match, interest_match, waitlist
+  const [manualMemberId, setManualMemberId] = useState("");
+  const [form, setForm] = useState({ title: "", description: "", ai_generated: false, team_type: "none" });
   const [aiIdea, setAiIdea] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -33,12 +38,80 @@ export default function CreateProject() {
     setForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));
   };
 
+  const addManualMember = () => {
+    if (manualMemberId && !teamMembers.includes(manualMemberId)) {
+      setTeamMembers([...teamMembers, manualMemberId]);
+      setManualMemberId("");
+    }
+  };
+
+  const removeMember = (memberId) => {
+    setTeamMembers(teamMembers.filter((id) => id !== memberId));
+  };
+
+  const handleTeamFormationNext = () => {
+    if (teamFormationMode === "waitlist") {
+      setForm((prev) => ({ ...prev, team_type: "waitlist" }));
+    } else if (teamMembers.length > 0) {
+      setForm((prev) => ({ ...prev, team_type: "team" }));
+    } else {
+      setForm((prev) => ({ ...prev, team_type: "none" }));
+    }
+    setStep(2); // Move to AI generation step
+  };
+
+  const generateAiIdeaFromTeam = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      // Collect all team member skills
+      const allSkills = profile?.skills?.map((skill) => skill.name) ?? [];
+      
+      // For now, use current user's skills. In future, fetch team member profiles
+      const payload = {
+        skills: allSkills,
+        experience_level: profile?.experiences?.length ? "intermediate" : "beginner",
+        candidate_profiles: teamMembers.map((id) => ({ user_id: id, skills: [] })), // Placeholder
+      };
+      
+      const { data } = await apiClient.post("/projects/ai-generate", payload).catch(handleApiError);
+      setAiIdea(data);
+      setForm((prev) => ({
+        ...prev,
+        title: data.title || prev.title,
+        description: data.description || prev.description,
+        ai_generated: true,
+      }));
+      setStep(3); // Move to project creation step
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createProject = async (event) => {
     event.preventDefault();
+    if (!form.title || !form.description) {
+      setError("Title and description are required. Use AI generation if needed.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       const { data } = await apiClient.post("/projects", form).catch(handleApiError);
+      // If team was formed, assign it to the project
+      if (teamMembers.length > 0 && data.id) {
+        try {
+          await apiClient.post(`/teams/projects/${data.id}/assign-team`, {
+            project_id: data.id,
+            user_ids: teamMembers,
+            role_map: {},
+          });
+        } catch (teamErr) {
+          console.error("Failed to assign team:", teamErr);
+        }
+      }
       navigate(`/projects/${data.id}`);
     } catch (err) {
       setError(err.message);
@@ -47,89 +120,266 @@ export default function CreateProject() {
     }
   };
 
-  const generateAiIdea = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const payload = {
-        skills: profile?.skills?.map((skill) => skill.name) ?? [],
-        experience_level: profile?.experiences?.length ? "intermediate" : "beginner",
-      };
-      const { data } = await apiClient.post("/projects/ai-generate", payload).catch(handleApiError);
-      setAiIdea(data);
-      setForm({
-        title: data.title,
-        description: data.description,
-        ai_generated: true,
-        team_type: "none",
-      });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="grid gap-6 md:grid-cols-[2fr_1fr]">
-      <Card>
-        <CardHeader>
-          <CardTitle>Create project</CardTitle>
-          <CardDescription>Define a project manually or use AI suggestions based on your skills.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={createProject}>
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Input id="title" name="title" value={form.title} onChange={handleChange} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <textarea
-                id="description"
-                name="description"
-                value={form.description}
-                onChange={handleChange}
-                required
-                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create project"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      {/* Step Indicator */}
+      <div className="flex items-center justify-center gap-4">
+        <div className={`flex items-center gap-2 ${step >= 1 ? "text-primary" : "text-muted-foreground"}`}>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${step >= 1 ? "border-primary bg-primary text-primary-foreground" : "border-muted"}`}>
+            1
+          </div>
+          <span className="font-medium">Team Formation</span>
+        </div>
+        <div className={`h-1 w-16 ${step >= 2 ? "bg-primary" : "bg-muted"}`} />
+        <div className={`flex items-center gap-2 ${step >= 2 ? "text-primary" : "text-muted-foreground"}`}>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${step >= 2 ? "border-primary bg-primary text-primary-foreground" : "border-muted"}`}>
+            2
+          </div>
+          <span className="font-medium">AI Generation</span>
+        </div>
+        <div className={`h-1 w-16 ${step >= 3 ? "bg-primary" : "bg-muted"}`} />
+        <div className={`flex items-center gap-2 ${step >= 3 ? "text-primary" : "text-muted-foreground"}`}>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 ${step >= 3 ? "border-primary bg-primary text-primary-foreground" : "border-muted"}`}>
+            3
+          </div>
+          <span className="font-medium">Create Project</span>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>AI Project Assistant</CardTitle>
-          <CardDescription>Generate an idea using your skills, experience, and interest areas.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button variant="outline" onClick={generateAiIdea} disabled={loading}>
-            {loading ? "Generating..." : "Generate idea"}
-          </Button>
-          {aiIdea ? (
-            <div className="space-y-3 rounded-md border p-4">
-              <p className="text-sm font-semibold">{aiIdea.title}</p>
-              <p className="text-sm text-muted-foreground">{aiIdea.description}</p>
-              <div>
-                <p className="text-xs font-semibold uppercase text-muted-foreground">Milestones</p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                  {aiIdea.milestones.map((milestone) => (
-                    <li key={milestone}>{milestone}</li>
-                  ))}
-                </ul>
+      {error ? <p className="text-sm text-destructive text-center">{error}</p> : null}
+
+      {/* Step 1: Team Formation */}
+      {step === 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Form Your Team</CardTitle>
+            <CardDescription>Choose how you want to form your team. You can add members manually, match by skills/interests, or use waitlist.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Team Formation Mode Selection */}
+            <div className="space-y-3">
+              <Label>Team Formation Method</Label>
+              <div className="grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setTeamFormationMode("manual")}
+                  className={`rounded-md border p-4 text-left transition-colors ${
+                    teamFormationMode === "manual" ? "border-primary bg-primary/5" : "border-muted"
+                  }`}
+                >
+                  <p className="font-medium">Add Known Members</p>
+                  <p className="text-xs text-muted-foreground">Add team members if you know their user IDs</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeamFormationMode("skill_match")}
+                  className={`rounded-md border p-4 text-left transition-colors ${
+                    teamFormationMode === "skill_match" ? "border-primary bg-primary/5" : "border-muted"
+                  }`}
+                >
+                  <p className="font-medium">Match by Skills</p>
+                  <p className="text-xs text-muted-foreground">AI will find members with similar skills</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeamFormationMode("interest_match")}
+                  className={`rounded-md border p-4 text-left transition-colors ${
+                    teamFormationMode === "interest_match" ? "border-primary bg-primary/5" : "border-muted"
+                  }`}
+                >
+                  <p className="font-medium">Match by Interests</p>
+                  <p className="text-xs text-muted-foreground">AI will find members with similar interests</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeamFormationMode("waitlist")}
+                  className={`rounded-md border p-4 text-left transition-colors ${
+                    teamFormationMode === "waitlist" ? "border-primary bg-primary/5" : "border-muted"
+                  }`}
+                >
+                  <p className="font-medium">Waitlist</p>
+                  <p className="text-xs text-muted-foreground">Join waitlist for team assignment</p>
+                </button>
               </div>
             </div>
-          ) : null}
-        </CardContent>
-        <CardFooter>
-          <p className="text-xs text-muted-foreground">Use the generated idea to pre-fill the form above.</p>
-        </CardFooter>
-      </Card>
+
+            {/* Manual Member Addition */}
+            {teamFormationMode === "manual" && (
+              <div className="space-y-3">
+                <Label>Add Team Members</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter user ID"
+                    value={manualMemberId}
+                    onChange={(e) => setManualMemberId(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addManualMember())}
+                  />
+                  <Button type="button" onClick={addManualMember} variant="outline">
+                    Add
+                  </Button>
+                </div>
+                {teamMembers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Team Members:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {teamMembers.map((memberId) => (
+                        <Badge key={memberId} variant="secondary" className="flex items-center gap-2">
+                          {memberId}
+                          <button
+                            type="button"
+                            onClick={() => removeMember(memberId)}
+                            className="ml-1 hover:text-destructive"
+                          >
+                            ×
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Skill/Interest Match Info */}
+            {(teamFormationMode === "skill_match" || teamFormationMode === "interest_match") && (
+              <div className="rounded-md border border-muted bg-muted/50 p-4">
+                <p className="text-sm text-muted-foreground">
+                  AI will automatically match team members based on {teamFormationMode === "skill_match" ? "skills" : "interests"} after you generate the project idea.
+                </p>
+              </div>
+            )}
+
+            {/* Waitlist Info */}
+            {teamFormationMode === "waitlist" && (
+              <div className="rounded-md border border-muted bg-muted/50 p-4">
+                <p className="text-sm text-muted-foreground">
+                  You will be added to the waitlist. The system will automatically assign team members or create a solo project after 7 days.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button onClick={handleTeamFormationNext} disabled={loading}>
+                Next: Generate Project Idea
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 2: AI Project Generation */}
+      {step === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Generate Project Idea</CardTitle>
+            <CardDescription>AI will generate a project idea based on your team's skills and interests.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {teamMembers.length > 0 && (
+              <div className="rounded-md border p-3">
+                <p className="text-sm font-medium mb-2">Team Members:</p>
+                <div className="flex flex-wrap gap-2">
+                  {teamMembers.map((id) => (
+                    <Badge key={id} variant="secondary">{id}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button onClick={generateAiIdeaFromTeam} disabled={loading} className="w-full">
+              {loading ? "Generating Project Idea..." : "Generate Project Idea with AI"}
+            </Button>
+            {aiIdea && (
+              <div className="space-y-3 rounded-md border p-4">
+                <p className="text-sm font-semibold">{aiIdea.title}</p>
+                <p className="text-sm text-muted-foreground">{aiIdea.description}</p>
+                {aiIdea.milestones && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Milestones</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {aiIdea.milestones.map((milestone, idx) => (
+                        <li key={idx}>{milestone}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="flex gap-2 pt-2">
+                  <Button onClick={() => setStep(3)} className="flex-1">
+                    Use This Idea
+                  </Button>
+                  <Button onClick={generateAiIdeaFromTeam} variant="outline" disabled={loading}>
+                    Generate Another
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <Button variant="outline" onClick={() => setStep(1)}>
+                Back
+              </Button>
+              {aiIdea && (
+                <Button onClick={() => setStep(3)}>
+                  Next: Create Project
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3: Create Project */}
+      {step === 3 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Create Project</CardTitle>
+            <CardDescription>Review and finalize your project details. Title and description can be edited or left as AI-generated.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={createProject}>
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
+                <Input
+                  id="title"
+                  name="title"
+                  value={form.title}
+                  onChange={handleChange}
+                  placeholder="Project title (required)"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  placeholder="Project description (required)"
+                  required
+                  className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              {teamMembers.length > 0 && (
+                <div className="rounded-md border p-3">
+                  <p className="text-sm font-medium mb-2">Team will be assigned:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {teamMembers.map((id) => (
+                      <Badge key={id} variant="secondary">{id}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setStep(2)} className="flex-1">
+                  Back
+                </Button>
+                <Button type="submit" disabled={loading} className="flex-1">
+                  {loading ? "Creating..." : "Create Project"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
