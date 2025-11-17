@@ -319,42 +319,63 @@ def search_users_by_skills(
 	"""
 	Search for users who have matching skills.
 	Returns users with their skills for team matching.
+	Optimized for performance.
 	"""
 	skill_list = [s.strip().lower() for s in skills.split(",") if s.strip()]
 	if not skill_list:
 		return []
 	
-	# Find users with matching skills
-	users_with_skills = (
-		db.query(User, Skill)
-		.join(Skill, User.id == Skill.user_id)
-		.filter(Skill.name.in_([s.capitalize() for s in skill_list]))
-		.filter(User.id != current_user.id)  # Exclude current user
-		.filter(User.profile_completed == True)  # Only completed profiles
+	# Optimized query: Get distinct users with matching skills
+	# First, get user IDs with matching skills
+	user_ids_with_skills = (
+		db.query(distinct(Skill.user_id))
+		.filter(func.lower(Skill.name).in_([s.lower() for s in skill_list]))
+		.filter(Skill.user_id != current_user.id)
+		.limit(limit * 2)  # Get more candidates for better matching
 		.all()
 	)
 	
-	# Group by user and collect their skills
-	user_skill_map = {}
-	for user, skill in users_with_skills:
-		if user.id not in user_skill_map:
-			user_skill_map[user.id] = {
+	if not user_ids_with_skills:
+		return []
+	
+	user_ids_list = [uid[0] for uid in user_ids_with_skills]
+	
+	# Get users with completed profiles
+	users = (
+		db.query(User)
+		.filter(User.id.in_(user_ids_list))
+		.filter(User.profile_completed == True)
+		.all()
+	)
+	
+	# Get all skills for these users in one query
+	all_skills = (
+		db.query(Skill)
+		.filter(Skill.user_id.in_([u.id for u in users]))
+		.all()
+	)
+	
+	# Group skills by user
+	skills_by_user = {}
+	for skill in all_skills:
+		if skill.user_id not in skills_by_user:
+			skills_by_user[skill.user_id] = []
+		skills_by_user[skill.user_id].append(skill.name)
+	
+	# Calculate match scores
+	results = []
+	for user in users:
+		user_skills = [s.lower() for s in skills_by_user.get(user.id, [])]
+		match_count = len(set(user_skills) & set(skill_list))
+		if match_count > 0:  # Only include users with at least one match
+			results.append({
 				"user_id": user.id,
 				"name": user.name,
 				"email": user.email,
-				"skills": [],
-			}
-		user_skill_map[user.id]["skills"].append(skill.name)
-	
-	# Calculate match scores and sort
-	results = []
-	for user_data in user_skill_map.values():
-		match_count = len(set(s.lower() for s in user_data["skills"]) & set(skill_list))
-		results.append({
-			**user_data,
-			"match_score": match_count,
-			"total_skills": len(user_data["skills"]),
-		})
+				"skills": skills_by_user.get(user.id, []),
+				"match_score": match_count,
+				"total_skills": len(user_skills),
+			})
 	
 	# Sort by match score and return top results
 	results.sort(key=lambda x: (x["match_score"], x["total_skills"]), reverse=True)

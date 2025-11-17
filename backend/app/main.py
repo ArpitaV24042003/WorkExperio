@@ -4,7 +4,7 @@ from starlette.websockets import WebSocketState
 from datetime import datetime
 import time
 
-from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin
+from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, ai_team_formation
 from .db import create_all_tables
 from .metrics_store import metrics_store
 
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
 	app.include_router(teams.router, prefix="/teams", tags=["teams"])
 	app.include_router(chat.router, tags=["chat"])
 	app.include_router(ai.router, prefix="/ai", tags=["ai"])
+	app.include_router(ai_team_formation.router, prefix="/ai", tags=["ai"])
 	app.include_router(xp.router, prefix="/users", tags=["xp"])
 	app.include_router(metrics.router, tags=["metrics"])
 	app.include_router(admin.router, prefix="/admin", tags=["admin"])

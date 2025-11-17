@@ -158,16 +158,41 @@ export default function CreateProject() {
     setError("");
     
     try {
-      // If skill_match or interest_match, find team members automatically and auto-create team
+      // If skill_match or interest_match, use fully automated AI flow
       if (teamFormationMode === "skill_match" || teamFormationMode === "interest_match") {
-        const userSkills = profile?.skills?.map((skill) => skill.name) || [];
-        const skillsQuery = userSkills.join(",");
+        // Use the automated endpoint that does everything
+        try {
+          const { data } = await apiClient.post("/ai/auto-create-project-with-team", {
+            match_mode: teamFormationMode,
+            domain: domain || "",
+            problem_statement: problemStatement || "",
+          }).catch(handleApiError);
+          
+          if (data && data.project) {
+            // Project and team are already created!
+            // Navigate directly to project
+            navigate(`/projects/${data.project.id}`);
+            return;
+          }
+        } catch (autoErr) {
+          console.error("Auto-create failed, falling back to manual flow:", autoErr);
+          // Fall back to manual flow if auto-create fails
+        }
         
+        // Fallback: Manual team member search
+        const userSkills = profile?.skills?.map((skill) => skill.name) || [];
+        if (userSkills.length === 0) {
+          setError("Please add skills to your profile first");
+          setLoading(false);
+          return;
+        }
+        
+        const skillsQuery = userSkills.join(",");
         const endpoint = teamFormationMode === "skill_match" 
           ? `/users/search/by-skills?skills=${encodeURIComponent(skillsQuery)}&limit=5`
           : `/users/search/by-interests?interests=${encodeURIComponent(skillsQuery)}&limit=5`;
         
-        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        const { data } = await apiClient.get(endpoint, { timeout: 30000 }).catch(handleApiError);
         
         if (data && data.length > 0) {
           // Add top matching users to team with their details
@@ -187,7 +212,7 @@ export default function CreateProject() {
           });
           setTeamMemberDetails((prev) => ({ ...prev, ...newDetails }));
           
-          // Auto-assign roles based on skills (AI can suggest roles later)
+          // Auto-assign roles based on skills
           const roleSuggestions = {};
           newMembers.forEach((user) => {
             const userSkills = (user.skills || []).map(s => s.toLowerCase());
@@ -202,6 +227,8 @@ export default function CreateProject() {
             }
           });
           setMemberRoles((prev) => ({ ...prev, ...roleSuggestions }));
+        } else {
+          setError("No matching team members found. Try adding more skills to your profile or use manual team formation.");
         }
       }
       
@@ -216,7 +243,7 @@ export default function CreateProject() {
         setStep(4); // Skip to AI generation
       }
     } catch (err) {
-      setError(err.message || "Failed to find team members");
+      setError(err.message || "Failed to find team members. Please try again or use manual team formation.");
     } finally {
       setLoading(false);
     }
