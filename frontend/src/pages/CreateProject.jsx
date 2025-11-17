@@ -104,6 +104,39 @@ export default function CreateProject() {
 
   const removeMember = (memberId) => {
     setTeamMembers(teamMembers.filter((id) => id !== memberId));
+    // Remove role when member is removed
+    setMemberRoles((prev) => {
+      const newRoles = { ...prev };
+      delete newRoles[memberId];
+      return newRoles;
+    });
+  };
+
+  const generateRoleSuggestions = (domain, teamSize) => {
+    // Simple role suggestion based on domain
+    const domainLower = domain.toLowerCase();
+    const suggestions = [];
+    
+    if (domainLower.includes("web") || domainLower.includes("frontend") || domainLower.includes("backend")) {
+      suggestions.push("Frontend Developer", "Backend Developer", "Full Stack Developer", "UI/UX Designer");
+    } else if (domainLower.includes("data") || domainLower.includes("science") || domainLower.includes("analytics")) {
+      suggestions.push("Data Scientist", "Data Engineer", "ML Engineer", "Data Analyst");
+    } else if (domainLower.includes("mobile") || domainLower.includes("app")) {
+      suggestions.push("Mobile Developer", "Backend Developer", "UI/UX Designer", "QA Engineer");
+    } else if (domainLower.includes("ai") || domainLower.includes("ml") || domainLower.includes("machine learning")) {
+      suggestions.push("ML Engineer", "Data Scientist", "AI Researcher", "Backend Developer");
+    } else {
+      suggestions.push("Developer", "Designer", "Engineer", "Specialist");
+    }
+    
+    // Adjust based on team size
+    if (teamSize <= 2) {
+      return suggestions.slice(0, 2);
+    } else if (teamSize <= 4) {
+      return suggestions.slice(0, 4);
+    } else {
+      return suggestions.slice(0, 5);
+    }
   };
 
   const handleTeamFormationNext = async () => {
@@ -233,23 +266,27 @@ export default function CreateProject() {
     setError("");
     try {
       const { data } = await apiClient.post("/projects", form).catch(handleApiError);
-      // Always include creator as team member and leader
-      const allTeamMembers = teamMembers.includes(user?.id) ? teamMembers : [user?.id, ...teamMembers];
+      
+      // ALWAYS include creator as team member and leader (even if no other members)
+      const allTeamMembers = teamMembers.includes(user?.id) 
+        ? teamMembers 
+        : [user?.id, ...teamMembers.filter(id => id !== user?.id)];
       const allRoles = { ...memberRoles };
       if (!allRoles[user?.id]) {
         allRoles[user?.id] = "Team Leader";
       }
       
-      // If team was formed, assign it to the project with roles (including creator)
-      if (allTeamMembers.length > 0 && data.id) {
+      // Always create team with creator as member (even for solo projects)
+      if (data.id) {
         try {
           await apiClient.post(`/teams/projects/${data.id}/assign-team`, {
             project_id: data.id,
-            user_ids: allTeamMembers,
+            user_ids: allTeamMembers.length > 0 ? allTeamMembers : [user?.id], // Ensure at least creator
             role_map: allRoles, // Include assigned roles
           });
         } catch (teamErr) {
           console.error("Failed to assign team:", teamErr);
+          // Still navigate even if team assignment fails
         }
       }
       navigate(`/projects/${data.id}`);
@@ -552,7 +589,7 @@ export default function CreateProject() {
         <Card>
           <CardHeader>
             <CardTitle>Domain & Team Roles</CardTitle>
-            <CardDescription>Specify the project domain and assign roles to each team member.</CardDescription>
+            <CardDescription>Specify the project domain and assign roles to each team member. AI will suggest roles based on domain and team size.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -561,16 +598,59 @@ export default function CreateProject() {
                 id="domain"
                 placeholder="e.g., Web Development, Data Science, Mobile App, AI/ML, etc."
                 value={domain}
-                onChange={(e) => setDomain(e.target.value)}
+                onChange={async (e) => {
+                  setDomain(e.target.value);
+                  // Auto-suggest roles when domain is entered and we have team members
+                  if (e.target.value.trim() && teamMembers.length > 0) {
+                    try {
+                      // Generate role suggestions based on domain and team size
+                      const teamSize = teamMembers.length + 1; // Include creator
+                      const roles = generateRoleSuggestions(e.target.value, teamSize);
+                      setSuggestedRoles(roles);
+                    } catch (err) {
+                      console.error("Failed to generate role suggestions:", err);
+                    }
+                  }
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 The domain helps AI generate appropriate project ideas and assign relevant tasks.
               </p>
             </div>
 
+            {suggestedRoles.length > 0 && (
+              <div className="rounded-md border p-3 bg-muted/50">
+                <p className="text-sm font-medium mb-2">AI Suggested Roles:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedRoles.map((role, idx) => (
+                    <Badge key={idx} variant="secondary">{role}</Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  These roles are suggested based on your project domain and team size ({teamMembers.length + 1} members).
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3">
               <Label>Assign Roles to Team Members</Label>
-              {teamMembers.map((memberId) => {
+              {/* Creator (always Team Leader) */}
+              <div className="rounded-md border p-3 space-y-2 bg-primary/5">
+                <div>
+                  <p className="font-medium">You (Creator)</p>
+                  <p className="text-xs text-muted-foreground">{user?.email || user?.id}</p>
+                </div>
+                <Input
+                  value={memberRoles[user?.id] || "Team Leader"}
+                  onChange={(e) => setMemberRoles((prev) => ({ ...prev, [user?.id]: e.target.value }))}
+                  disabled
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">You are automatically the Team Leader</p>
+              </div>
+
+              {/* Other team members */}
+              {teamMembers.filter(id => id !== user?.id).map((memberId) => {
                 const memberInfo = teamMemberDetails[memberId] || { name: memberId, skills: [] };
                 return (
                   <div key={memberId} className="rounded-md border p-3 space-y-2">
@@ -585,11 +665,21 @@ export default function CreateProject() {
                         </div>
                       )}
                     </div>
-                    <Input
-                      placeholder="Role (e.g., Frontend Developer, Backend Developer, Data Scientist, Designer)"
-                      value={memberRoles[memberId] || ""}
-                      onChange={(e) => setMemberRoles((prev) => ({ ...prev, [memberId]: e.target.value }))}
-                    />
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Select or enter role"
+                        value={memberRoles[memberId] || ""}
+                        onChange={(e) => setMemberRoles((prev) => ({ ...prev, [memberId]: e.target.value }))}
+                        list={`roles-${memberId}`}
+                      />
+                      {suggestedRoles.length > 0 && (
+                        <datalist id={`roles-${memberId}`}>
+                          {suggestedRoles.filter(r => r !== "Team Leader").map((role) => (
+                            <option key={role} value={role} />
+                          ))}
+                        </datalist>
+                      )}
+                    </div>
                   </div>
                 );
               })}

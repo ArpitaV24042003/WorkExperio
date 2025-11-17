@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..dependencies import get_current_user
-from ..models import Project, Team, TeamMember, ProjectWaitlist, User
+from ..models import Project, Team, TeamMember, ProjectWaitlist, User, Skill
 from ..ai.team_selection import recommend_team
+from ..ai.role_suggestions import suggest_roles_for_project
 from ..schemas import (
 	TeamSuggestionRequest,
 	TeamAssignRequest,
@@ -103,20 +104,86 @@ def assign_team(
 	if not project:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-	team = Team(project_id=project_id)
-	db.add(team)
-	db.flush()
+	# Check if team already exists
+	existing_team = db.query(Team).filter(Team.project_id == project_id).first()
+	if existing_team:
+		team = existing_team
+		# Remove existing members to reassign
+		db.query(TeamMember).filter(TeamMember.team_id == team.id).delete()
+	else:
+		team = Team(project_id=project_id)
+		db.add(team)
+		db.flush()
 
-	for user_id in payload.user_ids:
+	# Always ensure creator is in the team
+	user_ids = payload.user_ids if payload.user_ids else []
+	if current_user.id not in user_ids:
+		user_ids.append(current_user.id)
+
+	for user_id in user_ids:
 		role = payload.role_map.get(user_id) if payload.role_map else None
+		# Set creator as Team Leader if no role specified
+		if user_id == current_user.id and not role:
+			role = "Team Leader"
 		db.add(TeamMember(team_id=team.id, user_id=user_id, role=role))
 
 	project.team_id = team.id
-	project.team_type = "team"
+	project.team_type = "team" if len(user_ids) > 1 else "solo"
 	db.commit()
 	db.refresh(team)
 	return team
 
+
+@router.post("/projects/{project_id}/suggest-roles", response_model=Dict[str, Any])
+def suggest_roles(
+	project_id: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""
+	Suggest roles for team members based on project domain, problem statement, and team size.
+	"""
+	project = db.query(Project).filter(Project.id == project_id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Get team members if team exists
+	team_size = 1  # At least the creator
+	member_skills_list = []
+	
+	if project.team_id:
+		team = db.query(Team).filter(Team.id == project.team_id).first()
+		if team:
+			members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+			team_size = len(members)
+			
+			# Get skills for each member
+			for member in members:
+				skills = [skill.name for skill in db.query(Skill).filter(Skill.user_id == member.user_id)]
+				member_skills_list.append({
+					"user_id": member.user_id,
+					"skills": skills,
+				})
+	
+	# Extract domain and problem from project (you may need to add these fields to Project model)
+	# For now, use description to infer
+	domain = getattr(project, "domain", "") or ""
+	problem_statement = project.description or ""
+	
+	# Get suggested roles
+	suggested_roles = suggest_roles_for_project(
+		domain=domain,
+		problem_statement=problem_statement,
+		team_size=team_size,
+		member_skills=member_skills_list
+	)
+	
+	return {
+		"suggested_roles": suggested_roles,
+		"team_size": team_size,
+		"domain": domain,
+	}
+	
 
 @router.get("/projects/{project_id}/team", response_model=dict[str, Any])
 def get_team(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

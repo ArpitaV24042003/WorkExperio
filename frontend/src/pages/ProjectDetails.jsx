@@ -19,11 +19,24 @@ export default function ProjectDetails() {
 
   useEffect(() => {
     const loadProject = async () => {
+      // Ensure auth is initialized
+      const token = localStorage.getItem("token");
+      if (!token && !user?.id) {
+        setError("Please log in to view this project");
+        setLoading(false);
+        return;
+      }
+      
       try {
         const { data } = await apiClient.get(`/projects/${projectId}`).catch((err) => {
           if (err.response?.status === 401 || err.response?.status === 403) {
-            setError("You don't have access to this project");
-            // Don't navigate immediately - let user see the error
+            setError("You don't have access to this project. Please ensure you're logged in and are a team member.");
+            setLoading(false);
+            return null;
+          }
+          if (err.response?.status === 404) {
+            setError("Project not found");
+            setLoading(false);
             return null;
           }
           throw err;
