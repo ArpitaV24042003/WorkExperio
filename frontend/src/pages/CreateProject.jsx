@@ -618,7 +618,11 @@ export default function CreateProject() {
 
             <div className="flex justify-end">
               <Button onClick={handleTeamFormationNext} disabled={loading}>
-                {teamMembers.length > 0 ? "Next: Domain & Roles" : "Next: Generate Project Idea"}
+                {teamFormationMode === "skill_match" || teamFormationMode === "interest_match" 
+                  ? (loading ? "AI is working..." : "🤖 AI: Find Team & Create Project")
+                  : teamMembers.length > 0 
+                  ? "Next: Domain & Roles" 
+                  : "Next: Generate Project Idea"}
               </Button>
             </div>
           </CardContent>
