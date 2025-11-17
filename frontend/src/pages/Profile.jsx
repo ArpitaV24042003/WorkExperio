@@ -37,6 +37,19 @@ export default function Profile() {
       <div>
         <h1 className="text-3xl font-semibold">{profile.name}</h1>
         <p className="text-muted-foreground">{profile.email}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <p className="text-xs text-muted-foreground">Your User ID:</p>
+          <code className="rounded bg-muted px-2 py-1 text-xs font-mono">{profile.id}</code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(profile.id);
+              alert("User ID copied to clipboard!");
+            }}
+            className="text-xs text-primary hover:underline"
+          >
+            Copy
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

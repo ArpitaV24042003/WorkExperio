@@ -350,3 +350,63 @@ def search_users_by_interests(
 	"""
 	# Use skills as proxy for interests
 	return search_users_by_skills(interests, current_user, db, limit)
+
+
+@router.get("/search/by-email")
+def search_user_by_email(
+	email: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""
+	Search for a user by email address.
+	Useful for finding team members when you know their email.
+	"""
+	user = db.query(User).filter(User.email == email).filter(User.id != current_user.id).first()
+	if not user:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+	
+	# Get user's skills
+	user_skills = [skill.name for skill in db.query(Skill).filter(Skill.user_id == user.id)]
+	
+	return {
+		"user_id": user.id,
+		"name": user.name,
+		"email": user.email,
+		"skills": user_skills,
+		"profile_completed": user.profile_completed,
+	}
+
+
+@router.get("/search/by-name")
+def search_users_by_name(
+	name: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+	limit: int = 10,
+):
+	"""
+	Search for users by name (partial match).
+	Returns users whose names contain the search term.
+	"""
+	users = (
+		db.query(User)
+		.filter(User.name.ilike(f"%{name}%"))
+		.filter(User.id != current_user.id)
+		.filter(User.profile_completed == True)
+		.limit(limit)
+		.all()
+	)
+	
+	results = []
+	for user in users:
+		user_skills = [skill.name for skill in db.query(Skill).filter(Skill.user_id == user.id)]
+		results.append({
+			"user_id": user.id,
+			"name": user.name,
+			"email": user.email,
+			"skills": user_skills,
+			"profile_completed": user.profile_completed,
+		})
+	
+	return results

@@ -16,6 +16,10 @@ export default function CreateProject() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [teamFormationMode, setTeamFormationMode] = useState("manual"); // manual, skill_match, interest_match, waitlist
   const [manualMemberId, setManualMemberId] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState("email"); // email, name, user_id
   const [form, setForm] = useState({ title: "", description: "", ai_generated: false, team_type: "none" });
   const [aiIdea, setAiIdea] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -36,6 +40,44 @@ export default function CreateProject() {
 
   const handleChange = (event) => {
     setForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));
+  };
+
+  const searchUsers = async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearching(true);
+    try {
+      let endpoint = "";
+      if (searchMode === "email") {
+        endpoint = `/users/search/by-email?email=${encodeURIComponent(searchQuery)}`;
+        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        setSearchResults(data ? [data] : []);
+      } else if (searchMode === "name") {
+        endpoint = `/users/search/by-name?name=${encodeURIComponent(searchQuery)}&limit=5`;
+        const { data } = await apiClient.get(endpoint).catch(handleApiError);
+        setSearchResults(data || []);
+      } else {
+        // user_id mode - if it looks like a valid UUID, just add it directly
+        // User can add it via the direct User ID input below
+        setSearchResults([]);
+      }
+    } catch (err) {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const addMemberFromSearch = (user) => {
+    const userId = user.user_id || user.id;
+    if (userId && !teamMembers.includes(userId)) {
+      setTeamMembers([...teamMembers, userId]);
+      setSearchQuery("");
+      setSearchResults([]);
+    }
   };
 
   const addManualMember = () => {
@@ -234,20 +276,139 @@ export default function CreateProject() {
             {teamFormationMode === "manual" && (
               <div className="space-y-3">
                 <Label>Add Team Members</Label>
+                <p className="text-xs text-muted-foreground">
+                  Search by email or name, or enter user ID directly. Your User ID is shown in your Profile page.
+                </p>
+                
+                {/* Search Mode Toggle */}
                 <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter user ID"
-                    value={manualMemberId}
-                    onChange={(e) => setManualMemberId(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addManualMember())}
-                  />
-                  <Button type="button" onClick={addManualMember} variant="outline">
-                    Add
+                  <Button
+                    type="button"
+                    variant={searchMode === "email" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSearchMode("email")}
+                  >
+                    Email
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={searchMode === "name" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSearchMode("name")}
+                  >
+                    Name
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={searchMode === "user_id" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSearchMode("user_id")}
+                  >
+                    User ID
                   </Button>
                 </div>
+
+                {/* Search Input */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={
+                      searchMode === "email" 
+                        ? "Enter email address" 
+                        : searchMode === "name"
+                        ? "Enter name to search"
+                        : "Enter user ID"
+                    }
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (searchMode === "name" && e.target.value.length >= 2) {
+                        searchUsers();
+                      }
+                    }}
+                    onKeyPress={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (searchMode === "user_id") {
+                          setManualMemberId(searchQuery);
+                          addManualMember();
+                          setSearchQuery("");
+                        } else {
+                          searchUsers();
+                        }
+                      }
+                    }}
+                  />
+                  {searchMode !== "name" && (
+                    <Button type="button" onClick={searchUsers} variant="outline" disabled={searching}>
+                      {searching ? "Searching..." : "Search"}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <p className="text-sm font-medium">Search Results:</p>
+                    {searchResults.map((user) => {
+                      const userId = user.user_id || user.id;
+                      const isAdded = teamMembers.includes(userId);
+                      return (
+                        <div
+                          key={userId}
+                          className={`flex items-center justify-between rounded-md border p-2 ${
+                            isAdded ? "bg-muted opacity-50" : "cursor-pointer hover:bg-muted/50"
+                          }`}
+                          onClick={() => !isAdded && addMemberFromSearch(user)}
+                        >
+                          <div>
+                            <p className="font-medium">{user.name}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                            {user.skills && user.skills.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {user.skills.slice(0, 3).map((skill, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs">
+                                    {skill}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {isAdded ? (
+                            <Badge variant="secondary">Added</Badge>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline">
+                              Add
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Direct User ID Input (fallback) */}
+                <div className="space-y-2">
+                  <Label htmlFor="directUserId" className="text-xs text-muted-foreground">
+                    Or enter User ID directly:
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="directUserId"
+                      placeholder="User ID (from Profile page)"
+                      value={manualMemberId}
+                      onChange={(e) => setManualMemberId(e.target.value)}
+                      onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addManualMember())}
+                    />
+                    <Button type="button" onClick={addManualMember} variant="outline">
+                      Add
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Team Members List */}
                 {teamMembers.length > 0 && (
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Team Members:</p>
+                    <p className="text-sm font-medium">Team Members ({teamMembers.length}):</p>
                     <div className="flex flex-wrap gap-2">
                       {teamMembers.map((memberId) => (
                         <Badge key={memberId} variant="secondary" className="flex items-center gap-2">
