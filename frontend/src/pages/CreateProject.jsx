@@ -112,30 +112,44 @@ export default function CreateProject() {
     });
   };
 
-  const generateRoleSuggestions = (domain, teamSize) => {
-    // Simple role suggestion based on domain
+  const generateRoleSuggestions = (domain, teamSize, problemStatement = "") => {
+    // Simple role suggestion based on domain and problem statement
     const domainLower = domain.toLowerCase();
+    const problemLower = problemStatement.toLowerCase();
     const suggestions = [];
     
-    if (domainLower.includes("web") || domainLower.includes("frontend") || domainLower.includes("backend")) {
-      suggestions.push("Frontend Developer", "Backend Developer", "Full Stack Developer", "UI/UX Designer");
-    } else if (domainLower.includes("data") || domainLower.includes("science") || domainLower.includes("analytics")) {
+    // Check problem statement for additional context
+    const needsFrontend = problemLower.includes("ui") || problemLower.includes("interface") || problemLower.includes("user experience") || problemLower.includes("website");
+    const needsBackend = problemLower.includes("api") || problemLower.includes("server") || problemLower.includes("database") || problemLower.includes("backend");
+    const needsData = problemLower.includes("data") || problemLower.includes("analytics") || problemLower.includes("analysis");
+    const needsML = problemLower.includes("machine learning") || problemLower.includes("ml") || problemLower.includes("ai") || problemLower.includes("model");
+    
+    if (domainLower.includes("web") || domainLower.includes("frontend") || domainLower.includes("backend") || needsFrontend || needsBackend) {
+      if (needsFrontend) suggestions.push("Frontend Developer", "UI/UX Designer");
+      if (needsBackend) suggestions.push("Backend Developer", "API Developer");
+      if (!needsFrontend && !needsBackend) {
+        suggestions.push("Frontend Developer", "Backend Developer", "Full Stack Developer", "UI/UX Designer");
+      }
+    } else if (domainLower.includes("data") || domainLower.includes("science") || domainLower.includes("analytics") || needsData) {
       suggestions.push("Data Scientist", "Data Engineer", "ML Engineer", "Data Analyst");
     } else if (domainLower.includes("mobile") || domainLower.includes("app")) {
       suggestions.push("Mobile Developer", "Backend Developer", "UI/UX Designer", "QA Engineer");
-    } else if (domainLower.includes("ai") || domainLower.includes("ml") || domainLower.includes("machine learning")) {
+    } else if (domainLower.includes("ai") || domainLower.includes("ml") || domainLower.includes("machine learning") || needsML) {
       suggestions.push("ML Engineer", "Data Scientist", "AI Researcher", "Backend Developer");
     } else {
       suggestions.push("Developer", "Designer", "Engineer", "Specialist");
     }
     
+    // Remove duplicates
+    const uniqueSuggestions = [...new Set(suggestions)];
+    
     // Adjust based on team size
     if (teamSize <= 2) {
-      return suggestions.slice(0, 2);
+      return uniqueSuggestions.slice(0, 2);
     } else if (teamSize <= 4) {
-      return suggestions.slice(0, 4);
+      return uniqueSuggestions.slice(0, 4);
     } else {
-      return suggestions.slice(0, 5);
+      return uniqueSuggestions.slice(0, 5);
     }
   };
 
@@ -702,7 +716,7 @@ export default function CreateProject() {
         <Card>
           <CardHeader>
             <CardTitle>Clarify Problem Statement</CardTitle>
-            <CardDescription>Describe the problem you want to solve or the goal of this project.</CardDescription>
+            <CardDescription>Describe the problem you want to solve or the goal of this project. This will help refine role suggestions.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -711,17 +725,39 @@ export default function CreateProject() {
                 id="problemStatement"
                 placeholder="Describe what problem this project will solve, what goals you want to achieve, or what you want to build..."
                 value={problemStatement}
-                onChange={(e) => setProblemStatement(e.target.value)}
+                onChange={(e) => {
+                  setProblemStatement(e.target.value);
+                  // Update role suggestions when problem statement changes
+                  if (domain && e.target.value.trim() && teamMembers.length > 0) {
+                    const teamSize = teamMembers.length + 1;
+                    const roles = generateRoleSuggestions(domain, teamSize, e.target.value);
+                    setSuggestedRoles(roles);
+                  }
+                }}
                 className="min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                This helps AI generate a more targeted project idea and assign appropriate tasks.
+                This helps AI generate a more targeted project idea and assign appropriate tasks and roles.
               </p>
             </div>
 
             {domain && (
               <div className="rounded-md border p-3">
                 <p className="text-sm font-medium">Domain: {domain}</p>
+              </div>
+            )}
+
+            {suggestedRoles.length > 0 && (
+              <div className="rounded-md border p-3 bg-muted/50">
+                <p className="text-sm font-medium mb-2">Updated AI Suggested Roles:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedRoles.map((role, idx) => (
+                    <Badge key={idx} variant="secondary">{role}</Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Roles updated based on domain and problem statement.
+                </p>
               </div>
             )}
 
