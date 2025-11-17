@@ -328,7 +328,11 @@ export default function CreateProject() {
     setLoading(true);
     setError("");
     try {
-      const { data } = await apiClient.post("/projects", form).catch(handleApiError);
+      const { data } = await apiClient.post("/projects", form, { timeout: 15000 }).catch(handleApiError);
+      
+      if (!data || !data.id) {
+        throw new Error("Failed to create project: No project ID returned");
+      }
       
       // ALWAYS include creator as team member and leader (even if no other members)
       const allTeamMembers = teamMembers.includes(user?.id) 
@@ -346,15 +350,18 @@ export default function CreateProject() {
             project_id: data.id,
             user_ids: allTeamMembers.length > 0 ? allTeamMembers : [user?.id], // Ensure at least creator
             role_map: allRoles, // Include assigned roles
-          });
+          }, { timeout: 10000 }).catch(handleApiError);
         } catch (teamErr) {
           console.error("Failed to assign team:", teamErr);
-          // Still navigate even if team assignment fails
+          // Still navigate even if team assignment fails - project is created
+          setError("Project created but team assignment failed. You can assign team members later.");
         }
       }
       navigate(`/projects/${data.id}`);
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err?.response?.data?.detail || err.message || "Failed to create project. Please try again.";
+      setError(errorMessage);
+      console.error("Create project error:", err);
     } finally {
       setLoading(false);
     }

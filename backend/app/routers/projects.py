@@ -19,65 +19,99 @@ def create_project(
 	current_user: User = Depends(get_current_user),
 	db: Session = Depends(get_db),
 ):
-	project = Project(
-		title=payload.title,
-		description=payload.description,
-		owner_id=current_user.id,
-		team_type=payload.team_type,
-		ai_generated=payload.ai_generated,
-	)
-	db.add(project)
-	db.commit()
-	db.refresh(project)
-	return project
+	try:
+		project = Project(
+			title=payload.title,
+			description=payload.description,
+			owner_id=current_user.id,
+			team_type=payload.team_type,
+			ai_generated=payload.ai_generated,
+		)
+		db.add(project)
+		db.commit()
+		db.refresh(project)
+		return project
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.exception("Error creating project")
+		db.rollback()
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"Failed to create project: {str(e)}"
+		)
 
 
 @router.get("", response_model=list[ProjectRead])
 def list_projects(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 	from ..models import Team, TeamMember
 	
-	# Get projects where user is owner
-	owned_projects = db.query(Project).filter(Project.owner_id == current_user.id).all()
-	
-	# Get projects where user is a team member
-	team_memberships = (
-		db.query(TeamMember)
-		.filter(TeamMember.user_id == current_user.id)
-		.all()
-	)
-	team_ids = [tm.team_id for tm in team_memberships]
-	team_projects = (
-		db.query(Project)
-		.filter(Project.team_id.in_(team_ids))
-		.all()
-		if team_ids else []
-	)
-	
-	# Combine and deduplicate
-	all_projects = {p.id: p for p in owned_projects + team_projects}
-	return sorted(all_projects.values(), key=lambda p: p.created_at, reverse=True)
+	try:
+		# Get projects where user is owner
+		owned_projects = db.query(Project).filter(Project.owner_id == current_user.id).all()
+		
+		# Get projects where user is a team member
+		team_memberships = (
+			db.query(TeamMember)
+			.filter(TeamMember.user_id == current_user.id)
+			.all()
+		)
+		team_ids = [tm.team_id for tm in team_memberships]
+		
+		# Only query team projects if there are team memberships
+		team_projects = []
+		if team_ids:
+			team_projects = (
+				db.query(Project)
+				.filter(Project.team_id.in_(team_ids))
+				.all()
+			)
+		
+		# Combine and deduplicate
+		all_projects = {p.id: p for p in owned_projects + team_projects}
+		return sorted(all_projects.values(), key=lambda p: p.created_at, reverse=True)
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.exception("Error listing projects")
+		# Return empty list on error rather than crashing
+		return []
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
 def get_project(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
 	from ..models import Team, TeamMember
 	
-	project = db.query(Project).filter(Project.id == project_id).first()
-	if not project:
-		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-	
-	# Allow access if user is owner or team member
-	if project.owner_id != current_user.id:
-		if project.team_id:
-			team = db.query(Team).filter(Team.id == project.team_id).first()
-			if team:
-				member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
-				if not member:
+	try:
+		project = db.query(Project).filter(Project.id == project_id).first()
+		if not project:
+			raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+		
+		# Allow access if user is owner or team member
+		if project.owner_id != current_user.id:
+			if project.team_id:
+				team = db.query(Team).filter(Team.id == project.team_id).first()
+				if team:
+					member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
+					if not member:
+						raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
+				else:
+					# Team ID exists but team not found - might be orphaned, allow owner access only
 					raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
-		else:
-			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
-	
-	return project
+			else:
+				raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
+		
+		return project
+	except HTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.exception("Error getting project")
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"Failed to retrieve project: {str(e)}"
+		)
 
 
 @router.post("/ai-generate", response_model=Dict[str, Any])

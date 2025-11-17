@@ -28,7 +28,9 @@ export default function ProjectDetails() {
       }
       
       try {
-        const { data } = await apiClient.get(`/projects/${projectId}`).catch((err) => {
+        setLoading(true);
+        setError(null);
+        const { data } = await apiClient.get(`/projects/${projectId}`, { timeout: 10000 }).catch((err) => {
           if (err.response?.status === 401 || err.response?.status === 403) {
             setError("You don't have access to this project. Please ensure you're logged in and are a team member.");
             setLoading(false);

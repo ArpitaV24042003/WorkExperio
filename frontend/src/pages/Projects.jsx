@@ -8,14 +8,20 @@ import { Badge } from "../components/ui/badge";
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const { data } = await apiClient.get("/projects").catch(handleApiError);
-        setProjects(data);
+        setLoading(true);
+        setError("");
+        const { data } = await apiClient.get("/projects", { timeout: 10000 }).catch(handleApiError);
+        setProjects(data || []);
       } catch (error) {
-        console.error(error);
+        console.error("Failed to fetch projects:", error);
+        const errorMessage = error?.response?.data?.detail || error.message || "Failed to load projects. Please try again.";
+        setError(errorMessage);
+        setProjects([]); // Ensure projects is empty array on error
       } finally {
         setLoading(false);
       }
@@ -35,22 +41,37 @@ export default function Projects() {
         </Button>
       </div>
 
+      {error && (
+        <Card>
+          <CardContent className="p-6">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline" 
+              className="mt-2"
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading projects...</p>
-      ) : projects.length === 0 ? (
+      ) : !error && projects.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
             No projects yet. Create one to get started with AI team formation.
           </CardContent>
         </Card>
-      ) : (
+      ) : !error && (
         <div className="grid gap-4 md:grid-cols-2">
           {projects.map((project) => (
             <Card key={project.id}>
               <CardHeader>
                 <CardTitle className="flex justify-between">
                   {project.title}
-                  <Badge variant={project.ai_generated ? "success" : "secondary"}>
+                  <Badge variant={project.ai_generated ? "default" : "secondary"}>
                     {project.ai_generated ? "AI-generated" : "Manual"}
                   </Badge>
                 </CardTitle>
