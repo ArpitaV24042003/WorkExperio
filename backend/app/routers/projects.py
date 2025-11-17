@@ -34,14 +34,49 @@ def create_project(
 
 @router.get("", response_model=list[ProjectRead])
 def list_projects(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-	return db.query(Project).filter(Project.owner_id == current_user.id).order_by(Project.created_at.desc()).all()
+	from ..models import Team, TeamMember
+	
+	# Get projects where user is owner
+	owned_projects = db.query(Project).filter(Project.owner_id == current_user.id).all()
+	
+	# Get projects where user is a team member
+	team_memberships = (
+		db.query(TeamMember)
+		.filter(TeamMember.user_id == current_user.id)
+		.all()
+	)
+	team_ids = [tm.team_id for tm in team_memberships]
+	team_projects = (
+		db.query(Project)
+		.filter(Project.team_id.in_(team_ids))
+		.all()
+		if team_ids else []
+	)
+	
+	# Combine and deduplicate
+	all_projects = {p.id: p for p in owned_projects + team_projects}
+	return sorted(all_projects.values(), key=lambda p: p.created_at, reverse=True)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
 def get_project(project_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-	project = db.query(Project).filter(Project.id == project_id, Project.owner_id == current_user.id).first()
+	from ..models import Team, TeamMember
+	
+	project = db.query(Project).filter(Project.id == project_id).first()
 	if not project:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Allow access if user is owner or team member
+	if project.owner_id != current_user.id:
+		if project.team_id:
+			team = db.query(Team).filter(Team.id == project.team_id).first()
+			if team:
+				member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
+				if not member:
+					raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
+		else:
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project")
+	
 	return project
 
 
@@ -75,23 +110,41 @@ def ai_generate_project(
 	# Use provided skills or combined team skills
 	skills = payload.get("skills") or list(all_skills)
 	experience_level = payload.get("experience_level", "intermediate")
+	domain = payload.get("domain")
+	problem_statement = payload.get("problem_statement")
 	
 	# Determine experience level based on team
 	if team_member_ids:
 		# If team has members, consider it intermediate/advanced
 		experience_level = "intermediate"
 	
-	idea = generate_project_idea(skills, experience_level)
-	model_log = ModelPrediction(
-		project_id=None,
-		model_name="project_generator",
-		input_json={"skills": skills, "experience_level": experience_level, "team_size": len(team_member_ids) + 1},
-		output_json=idea,
-		score=None,
-	)
-	db.add(model_log)
-	db.commit()
-	return idea
+	# Generate multiple ideas if requested
+	generate_multiple = payload.get("generate_multiple", False)
+	if generate_multiple:
+		from ..ai.project_generator import generate_multiple_project_ideas
+		ideas = generate_multiple_project_ideas(skills, experience_level, domain, problem_statement, count=5)
+		model_log = ModelPrediction(
+			project_id=None,
+			model_name="project_generator",
+			input_json={"skills": skills, "experience_level": experience_level, "team_size": len(team_member_ids) + 1, "domain": domain, "multiple": True},
+			output_json={"ideas": ideas},
+			score=None,
+		)
+		db.add(model_log)
+		db.commit()
+		return {"ideas": ideas}
+	else:
+		idea = generate_project_idea(skills, experience_level, domain, problem_statement)
+		model_log = ModelPrediction(
+			project_id=None,
+			model_name="project_generator",
+			input_json={"skills": skills, "experience_level": experience_level, "team_size": len(team_member_ids) + 1, "domain": domain},
+			output_json=idea,
+			score=None,
+		)
+		db.add(model_log)
+		db.commit()
+		return idea
 
 
 @router.post("/ai-generate-project", response_model=Dict[str, Any])

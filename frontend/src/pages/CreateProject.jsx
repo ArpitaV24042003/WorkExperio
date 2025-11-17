@@ -27,6 +27,7 @@ export default function CreateProject() {
   const [assignedTasks, setAssignedTasks] = useState({}); // {user_id: task}
   const [form, setForm] = useState({ title: "", description: "", ai_generated: false, team_type: "none" });
   const [aiIdea, setAiIdea] = useState(null);
+  const [multipleIdeas, setMultipleIdeas] = useState([]); // Store multiple AI-generated ideas
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -169,17 +170,35 @@ export default function CreateProject() {
         skills: currentUserSkills, // Base skills from current user
         experience_level: profile?.experiences?.length ? "intermediate" : "beginner",
         candidate_profiles: teamMembers.map((id) => ({ user_id: id, skills: [] })), // Backend will fetch skills
+        domain: domain,
+        problem_statement: problemStatement,
+        generate_multiple: true, // Generate multiple ideas
       };
       
       const { data } = await apiClient.post("/projects/ai-generate", payload).catch(handleApiError);
-      setAiIdea(data);
-      setForm((prev) => ({
-        ...prev,
-        title: data.title || prev.title,
-        description: data.description || prev.description,
-        ai_generated: true,
-      }));
-      setStep(3); // Move to project creation step
+      
+      // Handle multiple ideas or single idea
+      if (data.ideas && data.ideas.length > 0) {
+        // Show first idea by default, but allow selection
+        setAiIdea(data.ideas[0]);
+        setForm((prev) => ({
+          ...prev,
+          title: data.ideas[0].title || prev.title,
+          description: data.ideas[0].description || prev.description,
+          ai_generated: true,
+        }));
+        // Store all ideas for selection
+        setMultipleIdeas(data.ideas);
+      } else {
+        setAiIdea(data);
+        setForm((prev) => ({
+          ...prev,
+          title: data.title || prev.title,
+          description: data.description || prev.description,
+          ai_generated: true,
+        }));
+      }
+      setStep(5); // Move to task assignment step
     } catch (err) {
       setError(err.message);
     } finally {
@@ -197,13 +216,20 @@ export default function CreateProject() {
     setError("");
     try {
       const { data } = await apiClient.post("/projects", form).catch(handleApiError);
-      // If team was formed, assign it to the project with roles
-      if (teamMembers.length > 0 && data.id) {
+      // Always include creator as team member and leader
+      const allTeamMembers = teamMembers.includes(user?.id) ? teamMembers : [user?.id, ...teamMembers];
+      const allRoles = { ...memberRoles };
+      if (!allRoles[user?.id]) {
+        allRoles[user?.id] = "Team Leader";
+      }
+      
+      // If team was formed, assign it to the project with roles (including creator)
+      if (allTeamMembers.length > 0 && data.id) {
         try {
           await apiClient.post(`/teams/projects/${data.id}/assign-team`, {
             project_id: data.id,
-            user_ids: teamMembers,
-            role_map: memberRoles, // Include assigned roles
+            user_ids: allTeamMembers,
+            role_map: allRoles, // Include assigned roles
           });
         } catch (teamErr) {
           console.error("Failed to assign team:", teamErr);
@@ -641,6 +667,31 @@ export default function CreateProject() {
             <Button onClick={generateAiIdeaFromTeam} disabled={loading} className="w-full">
               {loading ? "Generating Project Idea..." : "Generate Project Idea with AI"}
             </Button>
+            {multipleIdeas.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Select a project idea:</p>
+                {multipleIdeas.map((idea, idx) => (
+                  <div
+                    key={idx}
+                    className={`rounded-md border p-3 cursor-pointer transition-colors ${
+                      aiIdea?.title === idea.title ? "border-primary bg-primary/5" : "border-muted hover:bg-muted/50"
+                    }`}
+                    onClick={() => {
+                      setAiIdea(idea);
+                      setForm((prev) => ({
+                        ...prev,
+                        title: idea.title || prev.title,
+                        description: idea.description || prev.description,
+                        ai_generated: true,
+                      }));
+                    }}
+                  >
+                    <p className="text-sm font-semibold">{idea.title}</p>
+                    <p className="text-sm text-muted-foreground">{idea.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {aiIdea && (
               <div className="space-y-3 rounded-md border p-4">
                 <p className="text-sm font-semibold">{aiIdea.title}</p>
@@ -660,7 +711,7 @@ export default function CreateProject() {
                     Use This Idea
                   </Button>
                   <Button onClick={generateAiIdeaFromTeam} variant="outline" disabled={loading}>
-                    Generate Another
+                    Generate More Ideas
                   </Button>
                 </div>
               </div>

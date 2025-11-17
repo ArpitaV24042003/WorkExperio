@@ -78,9 +78,12 @@ export default function TeamChat() {
 
   // WebSocket connection
   useEffect(() => {
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsHost = import.meta.env.VITE_WS_URL?.replace(/^https?:\/\//, "") || "localhost:8000";
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    const wsProtocol = apiUrl.startsWith("https") ? "wss:" : "ws:";
+    const wsHost = apiUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const socketUrl = `${wsProtocol}//${wsHost}/ws/projects/${projectId}/chat`;
+    
+    console.log("Connecting to WebSocket:", socketUrl);
     const socket = new WebSocket(socketUrl);
     socketRef.current = socket;
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+import re
 
 from ..db import get_db
 from ..dependencies import get_current_user
@@ -108,12 +109,36 @@ def populate_from_resume(
 	db.query(Experience).filter(Experience.user_id == user_id).delete()
 	db.query(Skill).filter(Skill.user_id == user_id).delete()
 
+	# Format and add education entries
 	for entry in extracted.get("education", []):
-		db.add(Education(user_id=user_id, institution=entry, degree="", field=""))
+		# Try to parse education entry (format: "Institution - Degree in Field" or similar)
+		entry_clean = entry.strip()
+		if entry_clean:
+			# Simple parsing - can be improved
+			parts = entry_clean.split(" - ")
+			institution = parts[0] if parts else entry_clean
+			degree_field = " - ".join(parts[1:]) if len(parts) > 1 else ""
+			db.add(Education(user_id=user_id, institution=institution, degree=degree_field, field=""))
+	
+	# Format and add experience entries
 	for entry in extracted.get("experience", []):
-		db.add(Experience(user_id=user_id, company=entry, role=entry, description="Imported from resume"))
+		entry_clean = entry.strip()
+		if entry_clean:
+			# Simple parsing - can be improved
+			parts = entry_clean.split(" - ")
+			role = parts[0] if parts else entry_clean
+			company = " - ".join(parts[1:]) if len(parts) > 1 else entry_clean
+			db.add(Experience(user_id=user_id, company=company, role=role, description="Imported from resume"))
+	
+	# Format and add skills (split if multiple skills in one entry)
 	for entry in extracted.get("skills", []):
-		db.add(Skill(user_id=user_id, name=entry))
+		entry_clean = entry.strip()
+		if entry_clean:
+			# Split by common separators
+			skills = [s.strip() for s in re.split(r'[,;|/•-]', entry_clean) if s.strip()]
+			for skill in skills:
+				if skill:
+					db.add(Skill(user_id=user_id, name=skill))
 
 	db.commit()
 	return get_profile(user_id, current_user, db)
