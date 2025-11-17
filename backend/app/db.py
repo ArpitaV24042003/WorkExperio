@@ -24,7 +24,18 @@ DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./ba
 if DATABASE_URL.startswith("sqlite"):
 	engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-	engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+	# PostgreSQL connection pool settings to prevent timeouts
+	engine = create_engine(
+		DATABASE_URL,
+		pool_pre_ping=True,  # Verify connections before using
+		pool_size=5,  # Number of connections to maintain
+		max_overflow=10,  # Additional connections beyond pool_size
+		pool_recycle=3600,  # Recycle connections after 1 hour
+		connect_args={
+			"connect_timeout": 10,  # Connection timeout in seconds
+			"application_name": "workexperio_backend",
+		} if "postgresql" in DATABASE_URL else {},
+	)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

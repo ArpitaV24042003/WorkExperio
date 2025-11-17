@@ -24,14 +24,23 @@ export default function Signup() {
     setError("");
     setLoading(true);
     try {
-      const { data } = await apiClient.post("/auth/signup", form).catch(handleApiError);
+      const { data } = await apiClient.post("/auth/signup", form, { timeout: 15000 }).catch(handleApiError);
       const token = data.access_token;
       setCredentials({ token, user: { name: form.name, email: form.email } });
-      const me = await apiClient.get("/users/me").catch(handleApiError);
-      setCredentials({ token, user: me.data });
+      
+      // Fetch user profile with timeout
+      try {
+        const me = await apiClient.get("/users/me", { timeout: 10000 }).catch(handleApiError);
+        setCredentials({ token, user: me.data });
+      } catch (profileError) {
+        // If profile fetch fails, still allow signup with basic info
+        console.warn("Failed to fetch user profile:", profileError);
+      }
+      
       navigate("/profile-setup");
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err?.response?.data?.detail || err.message || "Signup failed. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

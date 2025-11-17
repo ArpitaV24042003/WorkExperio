@@ -24,14 +24,23 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const { data } = await apiClient.post("/auth/login", form).catch(handleApiError);
+      const { data } = await apiClient.post("/auth/login", form, { timeout: 15000 }).catch(handleApiError);
       const token = data.access_token;
       setCredentials({ token, user: { email: form.email } });
-      const me = await apiClient.get("/users/me").catch(handleApiError);
-      setCredentials({ token, user: me.data });
+      
+      // Fetch user profile with timeout
+      try {
+        const me = await apiClient.get("/users/me", { timeout: 10000 }).catch(handleApiError);
+        setCredentials({ token, user: me.data });
+      } catch (profileError) {
+        // If profile fetch fails, still allow login with basic info
+        console.warn("Failed to fetch user profile:", profileError);
+      }
+      
       navigate("/dashboard");
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err?.response?.data?.detail || err.message || "Login failed. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

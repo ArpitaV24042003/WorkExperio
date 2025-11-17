@@ -46,44 +46,84 @@ oauth.register(
 
 @router.post("/signup", response_model=TokenResponse)
 def signup(payload: UserCreate, db: Session = Depends(get_db)):
-	if db.query(User).filter(User.email == payload.email).first():
-		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+	try:
+		# Check if email already exists
+		existing_user = db.query(User).filter(User.email == payload.email).first()
+		if existing_user:
+			raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
-	user = User(
-		name=payload.name,
-		email=payload.email,
-		password_hash=hash_password(payload.password),
-	)
-	db.add(user)
-	db.flush()
+		# Hash password
+		password_hash = hash_password(payload.password)
+		
+		# Create user
+		user = User(
+			name=payload.name,
+			email=payload.email,
+			password_hash=password_hash,
+		)
+		db.add(user)
+		db.flush()  # Get user.id without committing
 
-	stats = UserStats(user_id=user.id)
-	db.add(stats)
-	db.commit()
-	db.refresh(user)
+		# Create UserStats for the new user
+		try:
+			stats = UserStats(user_id=user.id)
+			db.add(stats)
+		except Exception as stats_error:
+			logger.error(f"Error creating UserStats for user {user.id}: {stats_error}")
+			db.rollback()
+			raise HTTPException(
+				status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+				detail="Failed to create user profile"
+			)
 
-	token = create_access_token(user.id)
-	return TokenResponse(access_token=token)
+		# Commit both user and stats
+		db.commit()
+		db.refresh(user)
+
+		# Generate token
+		token = create_access_token(user.id)
+		return TokenResponse(access_token=token)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.exception("Signup error")
+		db.rollback()
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"Registration failed: {str(e)}"
+		)
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
-	user = db.query(User).filter(User.email == payload.email).first()
-	if not user:
-		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-	
-	# OAuth users don't have password_hash
-	if user.password_hash is None:
-		raise HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail="This account uses OAuth authentication. Please sign in with GitHub."
-		)
-	
-	if not verify_password(payload.password, user.password_hash):
-		raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+	try:
+		# Query user by email
+		user = db.query(User).filter(User.email == payload.email).first()
+		if not user:
+			raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+		
+		# OAuth users don't have password_hash
+		if user.password_hash is None:
+			raise HTTPException(
+				status_code=status.HTTP_401_UNAUTHORIZED,
+				detail="This account uses OAuth authentication. Please sign in with GitHub."
+			)
+		
+		# Verify password
+		if not verify_password(payload.password, user.password_hash):
+			raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-	token = create_access_token(user.id)
-	return TokenResponse(access_token=token)
+		# Generate token
+		token = create_access_token(user.id)
+		return TokenResponse(access_token=token)
+	except HTTPException:
+		raise
+	except Exception as e:
+		logger.exception("Login error")
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail=f"Login failed: {str(e)}"
+		)
 
 
 @router.get("/github/login")

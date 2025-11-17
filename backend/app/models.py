@@ -159,7 +159,7 @@ class UserStats(Base):
 	__tablename__ = "user_stats"
 
 	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
-	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), unique=True)
+	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
 	total_xp: Mapped[int] = mapped_column(Integer, default=0)
 	tasks_completed: Mapped[int] = mapped_column(Integer, default=0)
 	reviews_received: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
