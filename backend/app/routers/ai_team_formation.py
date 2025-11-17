@@ -38,11 +38,21 @@ async def auto_create_project_with_team(
 	problem_statement = payload.get("problem_statement", "")
 	
 	# Step 1: Get current user's skills
-	current_user_skills = [skill.name for skill in db.query(Skill).filter(Skill.user_id == current_user.id)]
+	try:
+		current_user_skills = [skill.name for skill in db.query(Skill).filter(Skill.user_id == current_user.id)]
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.exception("Error fetching user skills")
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail="Failed to fetch user skills. Please try again."
+		)
+	
 	if not current_user_skills:
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Please add skills to your profile first"
+			detail="Please add skills to your profile first. Go to your profile page and add at least one skill to use AI team formation."
 		)
 	
 	# Step 2: Find matching team members (optimized and ensures teams are created)
@@ -51,15 +61,22 @@ async def auto_create_project_with_team(
 	skill_list = [s.lower() for s in current_user_skills]
 	
 	# Get user IDs with matching skills (join with User to filter by profile_completed)
-	user_ids_with_skills = (
-		db.query(distinct(Skill.user_id))
-		.join(User, Skill.user_id == User.id)
-		.filter(func.lower(Skill.name).in_(skill_list))
-		.filter(Skill.user_id != current_user.id)
-		.filter(User.profile_completed == True)
-		.limit(20)  # Get more candidates for better team formation
-		.all()
-	)
+	try:
+		user_ids_with_skills = (
+			db.query(distinct(Skill.user_id))
+			.join(User, Skill.user_id == User.id)
+			.filter(func.lower(Skill.name).in_(skill_list))
+			.filter(Skill.user_id != current_user.id)
+			.filter(User.profile_completed == True)
+			.limit(20)  # Get more candidates for better team formation
+			.all()
+		)
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.exception("Error searching for team members")
+		# Continue with empty team if search fails
+		user_ids_with_skills = []
 	
 	team_member_ids = []
 	team_member_profiles = []
@@ -193,13 +210,14 @@ async def auto_create_project_with_team(
 	
 	# Step 6: Check if user wants to wait or create solo immediately
 	wait_for_team = payload.get("wait_for_team", False)  # User's choice to wait
+	wait_for_team_explicitly_set = "wait_for_team" in payload  # Check if explicitly provided
 	
 	# Step 7: Create project
 	# Determine team type: "team" if we have matched members, "waitlist" if waiting, "solo" if none
 	has_team = len(team_member_ids) > 0
 	
 	# If no team found and user hasn't decided yet, return info without creating project
-	if not has_team and not wait_for_team and payload.get("wait_for_team") is None:
+	if not has_team and not wait_for_team_explicitly_set:
 		# Return response indicating no team found, asking user to decide
 		return {
 			"project": None,

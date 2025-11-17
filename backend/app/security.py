@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import warnings
 
 from jose import jwt
 from passlib.context import CryptContext
 
 from .config import settings
+
+# Suppress bcrypt version warning (known issue with passlib and newer bcrypt)
+warnings.filterwarnings("ignore", category=UserWarning, module="passlib")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
