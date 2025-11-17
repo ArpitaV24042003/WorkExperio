@@ -5,12 +5,31 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..dependencies import get_current_user
-from ..models import Project, ChatMessage, UserStats, ModelPrediction
-from ..schemas import AssistantChatRequest, AssistantChatResponse, PerformanceAnalysisResponse
+from ..models import Project, ChatMessage, UserStats, ModelPrediction, AIConversation
+from ..schemas import AssistantChatRequest, AssistantChatResponse, PerformanceAnalysisResponse, AIConversationRead
 from ..ai.assistant_chat_ai import generate_assistant_response
 from ..ai.performance_ai import analyze_performance
 
 router = APIRouter()
+
+
+@router.get("/assistant-conversation")
+def get_conversation_history(
+	project_id: str = None,
+	current_user=Depends(get_current_user),
+	db: Session = Depends(get_db),
+	limit: int = 50,
+):
+	"""Get AI conversation history for the current user and optional project"""
+	query = db.query(AIConversation).filter(AIConversation.user_id == current_user.id)
+	
+	if project_id:
+		query = query.filter(AIConversation.project_id == project_id)
+	else:
+		query = query.filter(AIConversation.project_id == None)
+	
+	conversations = query.order_by(AIConversation.created_at.asc()).limit(limit).all()
+	return [AIConversationRead.model_validate(conv) for conv in conversations]
 
 
 @router.post("/assistant-chat", response_model=AssistantChatResponse)
@@ -20,16 +39,48 @@ def assistant_chat(payload: AssistantChatRequest, current_user=Depends(get_curre
 		project = db.query(Project).filter(Project.id == payload.project_id).first()
 		if not project:
 			raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Get conversation history from database if not provided
+	conversation_history = payload.conversation_history or []
+	if not conversation_history:
+		# Load from database
+		query = db.query(AIConversation).filter(AIConversation.user_id == current_user.id)
+		if payload.project_id:
+			query = query.filter(AIConversation.project_id == payload.project_id)
+		else:
+			query = query.filter(AIConversation.project_id == None)
 		
-		recent_messages = (
+		prev_conversations = query.order_by(AIConversation.created_at.desc()).limit(20).all()
+		conversation_history = [
+			{"role": conv.role, "content": conv.content}
+			for conv in reversed(prev_conversations)
+		]
+	
+	# Add current user message to history
+	conversation_history.append({"role": "user", "content": payload.message})
+	
+	# Store user message in database
+	user_message = AIConversation(
+		user_id=current_user.id,
+		project_id=payload.project_id,
+		role="user",
+		content=payload.message,
+	)
+	db.add(user_message)
+	db.flush()
+	
+	# Prepare context with conversation history
+	if payload.project_id:
+		recent_team_messages = (
 			db.query(ChatMessage)
 			.filter(ChatMessage.project_id == payload.project_id)
 			.order_by(ChatMessage.created_at.desc())
-			.limit(10)
+			.limit(5)
 			.all()
 		)
 		context = {
-			"recent_messages": [msg.content for msg in recent_messages],
+			"conversation_history": conversation_history,
+			"recent_team_messages": [msg.content for msg in recent_team_messages],
 			"suggested_tasks": [
 				"Review current milestone progress",
 				"Pair with a teammate on blockers",
@@ -38,7 +89,8 @@ def assistant_chat(payload: AssistantChatRequest, current_user=Depends(get_curre
 		}
 	else:
 		context = {
-			"recent_messages": [],
+			"conversation_history": conversation_history,
+			"recent_team_messages": [],
 			"suggested_tasks": [
 				"Start a new project",
 				"Update your profile",
@@ -46,8 +98,24 @@ def assistant_chat(payload: AssistantChatRequest, current_user=Depends(get_curre
 			],
 		}
 	
-	response = generate_assistant_response(payload.message, context)
-	return AssistantChatResponse(response=response["response"], suggestions=response["suggestions"])
+	# Generate response with full conversation context
+	response = generate_assistant_response(payload.message, context, conversation_history)
+	
+	# Store assistant response in database
+	assistant_message = AIConversation(
+		user_id=current_user.id,
+		project_id=payload.project_id,
+		role="assistant",
+		content=response["response"],
+	)
+	db.add(assistant_message)
+	db.commit()
+	
+	return AssistantChatResponse(
+		response=response["response"],
+		suggestions=response["suggestions"],
+		conversation_id=str(user_message.id),  # Use user message ID as conversation identifier
+	)
 
 
 @router.post("/analyze-performance/{project_id}", response_model=PerformanceAnalysisResponse)

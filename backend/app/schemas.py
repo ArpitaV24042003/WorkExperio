@@ -191,11 +191,22 @@ class AssistantChatRequest(BaseModel):
 	project_id: Optional[str] = None
 	user_id: str
 	message: str
+	conversation_history: Optional[List[Dict[str, str]]] = []  # Previous messages for context
 
 
 class AssistantChatResponse(BaseModel):
 	response: str
 	suggestions: List[str] = []
+	conversation_id: Optional[str] = None  # For tracking conversation
+
+
+class AIConversationRead(BaseSchema):
+	id: str
+	user_id: str
+	project_id: Optional[str] = None
+	role: str
+	content: str
+	created_at: datetime
 
 
 class PerformanceAnalysisResponse(BaseModel):

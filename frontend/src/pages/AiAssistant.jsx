@@ -12,6 +12,7 @@ export default function AiAssistant() {
   const [message, setMessage] = useState("");
   const [chatLog, setChatLog] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -22,21 +23,58 @@ export default function AiAssistant() {
     scrollToBottom();
   }, [chatLog]);
 
+  // Load conversation history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const params = projectId ? { project_id: projectId } : {};
+        const { data } = await apiClient.get("/ai/assistant-conversation", { params }).catch(handleApiError);
+        
+        if (data && data.length > 0) {
+          const history = data.map((conv) => ({
+            role: conv.role,
+            content: conv.content,
+            id: conv.id,
+          }));
+          setChatLog(history);
+        }
+      } catch (error) {
+        console.error("Failed to load conversation history:", error);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+    
+    loadHistory();
+  }, [projectId, user?.id]);
+
   const sendMessage = async (event) => {
     event.preventDefault();
     if (!message.trim() || loading) return;
     
     const userMessage = message.trim();
     setMessage("");
-    setChatLog((prev) => [...prev, { role: "user", content: userMessage }]);
+    
+    // Add user message to chat log immediately
+    const newUserMessage = { role: "user", content: userMessage };
+    setChatLog((prev) => [...prev, newUserMessage]);
     setLoading(true);
     
     try {
+      // Send conversation history for context
+      const conversationHistory = chatLog.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+      
       const { data } = await apiClient
         .post("/ai/assistant-chat", {
-          project_id: projectId,
+          project_id: projectId || null,
           user_id: user?.id,
           message: userMessage,
+          conversation_history: conversationHistory,
         })
         .catch(handleApiError);
       
@@ -56,7 +94,11 @@ export default function AiAssistant() {
         <CardDescription>Chat with AI about your project, get help, and receive suggestions.</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 space-y-4 overflow-y-auto">
-        {chatLog.length === 0 ? (
+        {loadingHistory ? (
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-muted-foreground">Loading conversation history...</p>
+          </div>
+        ) : chatLog.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <p className="text-lg font-semibold">How can I help you today?</p>

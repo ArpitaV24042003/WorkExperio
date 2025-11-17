@@ -144,6 +144,17 @@ class ChatMessage(Base):
 	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AIConversation(Base):
+	__tablename__ = "ai_conversations"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+	project_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True)
+	role: Mapped[str] = mapped_column(String(20))  # "user" or "assistant"
+	content: Mapped[str] = mapped_column(Text)
+	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class UserStats(Base):
 	__tablename__ = "user_stats"
 
