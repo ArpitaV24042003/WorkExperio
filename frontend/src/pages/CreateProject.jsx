@@ -1208,36 +1208,51 @@ export default function CreateProject() {
             <Button
               onClick={async () => {
                 setLoading(true);
+                setError("");
                 try {
-                  // Generate tasks for each team member
+                  // Generate tasks for each team member (including creator)
                   const tasks = {};
-                  for (const memberId of teamMembers) {
-                    const memberInfo = teamMemberDetails[memberId] || {};
-                    const role = memberRoles[memberId] || "Team Member";
-                    const skills = memberInfo.skills || [];
-                    
-                    // Call AI to generate task for this member
-                    const taskPrompt = `Generate a specific task for a ${role} with skills: ${skills.join(", ")}. 
-                    Project: ${aiIdea?.title || form.title}
-                    Domain: ${domain}
-                    Problem: ${problemStatement}
-                    Provide a clear, actionable task description.`;
-                    
+                  const allTeamMembers = teamMembers.includes(user?.id) 
+                    ? teamMembers 
+                    : [user?.id, ...teamMembers.filter(id => id !== user?.id)];
+                  
+                  if (allTeamMembers.length === 0) {
+                    setError("No team members to assign tasks to");
+                    setLoading(false);
+                    return;
+                  }
+                  
+                  for (const memberId of allTeamMembers) {
                     try {
-                      const { data } = await apiClient.post("/ai/assistant-chat", {
-                        project_id: null,
-                        user_id: user?.id,
-                        message: taskPrompt,
-                      }).catch(handleApiError);
+                      const memberInfo = teamMemberDetails[memberId] || { name: memberId, skills: [] };
+                      const role = memberRoles[memberId] || (memberId === user?.id ? "Team Leader" : "Team Member");
+                      const skills = memberInfo.skills || [];
                       
-                      tasks[memberId] = data.response || `Work on ${role} tasks for the project`;
-                    } catch {
-                      tasks[memberId] = `Work on ${role} tasks for the project`;
+                      // Call AI to generate task for this member
+                      const taskPrompt = `Generate a specific, actionable task for a ${role} with skills: ${skills.join(", ") || "general skills"}. Project: ${aiIdea?.title || form.title || "the project"} Domain: ${domain || "general"} Problem: ${problemStatement || "solve the project goals"}. Provide a clear, actionable task description in one sentence.`;
+                      
+                      try {
+                        const { data } = await apiClient.post("/ai/assistant-chat", {
+                          project_id: null,
+                          user_id: user?.id,
+                          message: taskPrompt,
+                        }, { timeout: 15000 }).catch(handleApiError);
+                        tasks[memberId] = data?.response || `Work on ${role} tasks for the project`;
+                      } catch (taskErr) {
+                        console.error(`Failed to generate task for ${memberId}:`, taskErr);
+                        // Fallback task
+                        tasks[memberId] = `Work on ${role} tasks for the project: ${aiIdea?.title || form.title || "the project"}`;
+                      }
+                    } catch (memberErr) {
+                      console.error(`Error processing member ${memberId}:`, memberErr);
+                      tasks[memberId] = `Work on team tasks for the project`;
                     }
                   }
                   setAssignedTasks(tasks);
+                  setError(""); // Clear any errors
                 } catch (err) {
-                  setError("Failed to assign tasks. You can proceed without task assignment.");
+                  console.error("Error assigning tasks:", err);
+                  setError("Failed to assign tasks. You can proceed without task assignment or try again.");
                 } finally {
                   setLoading(false);
                 }
