@@ -58,8 +58,10 @@ export default function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+  
   return (
-    <Routes>
+    <ErrorBoundary>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
 
@@ -86,6 +88,7 @@ export default function App() {
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+      </Routes>
+    </ErrorBoundary>
   );
 }

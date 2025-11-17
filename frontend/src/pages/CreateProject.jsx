@@ -1094,11 +1094,16 @@ export default function CreateProject() {
             <CardDescription>AI will generate a project idea based on your team's skills, domain, and problem statement.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {teamMembers.length > 0 && (
+            {(teamMembers.length > 0 || user?.id) && (
               <div className="rounded-md border p-3">
-                <p className="text-sm font-medium mb-2">Team Members ({teamMembers.length}):</p>
+                <p className="text-sm font-medium mb-2">Team Members ({teamMembers.length + (user?.id ? 1 : 0)}):</p>
                 <div className="flex flex-wrap gap-2">
-                  {teamMembers.map((id) => {
+                  {user?.id && (
+                    <Badge variant="secondary">
+                      {teamMemberDetails[user.id]?.name || user.id} (Team Leader)
+                    </Badge>
+                  )}
+                  {teamMembers.filter(id => id !== user?.id).map((id) => {
                     const memberInfo = teamMemberDetails[id] || { name: id };
                     return (
                       <Badge key={id} variant="secondary">
