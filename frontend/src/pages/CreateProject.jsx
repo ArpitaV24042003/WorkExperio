@@ -1251,8 +1251,20 @@ export default function CreateProject() {
             {Object.keys(assignedTasks).length > 0 && (
               <div className="space-y-3">
                 <p className="text-sm font-medium">Assigned Tasks:</p>
-                {teamMembers.map((memberId) => {
+                {/* Show creator's task first */}
+                {user?.id && assignedTasks[user.id] && (
+                  <div className="rounded-md border p-3 bg-primary/5">
+                    <p className="font-medium text-sm">{teamMemberDetails[user.id]?.name || user.id} (You)</p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Role: {memberRoles[user.id] || "Team Leader"}
+                    </p>
+                    <p className="text-sm">{assignedTasks[user.id]}</p>
+                  </div>
+                )}
+                {/* Show other team members' tasks */}
+                {teamMembers.filter(id => id !== user?.id && assignedTasks[id]).map((memberId) => {
                   const memberInfo = teamMemberDetails[memberId] || { name: memberId };
+                  const role = memberRoles[memberId];
                   const task = assignedTasks[memberId];
                   return (
                     <div key={memberId} className="rounded-md border p-3">
@@ -1321,11 +1333,19 @@ export default function CreateProject() {
                   </div>
                 </div>
               )}
-              {teamMembers.length > 0 && (
+              {(teamMembers.length > 0 || user?.id) && (
                 <div className="rounded-md border p-3">
-                  <p className="text-sm font-medium mb-2">Team Members ({teamMembers.length}):</p>
+                  <p className="text-sm font-medium mb-2">Team Members ({teamMembers.length + (user?.id ? 1 : 0)}):</p>
                   <div className="space-y-2">
-                    {teamMembers.map((memberId) => {
+                    {/* Show creator first */}
+                    {user?.id && (
+                      <div className="text-sm bg-primary/5 p-2 rounded">
+                        <p className="font-medium">{teamMemberDetails[user.id]?.name || user.id} <span className="text-muted-foreground">(Team Leader)</span></p>
+                        {assignedTasks[user.id] && <p className="text-xs text-muted-foreground mt-1">Task: {assignedTasks[user.id]}</p>}
+                      </div>
+                    )}
+                    {/* Show other members */}
+                    {teamMembers.filter(id => id !== user?.id).map((memberId) => {
                       const memberInfo = teamMemberDetails[memberId] || { name: memberId };
                       const role = memberRoles[memberId];
                       const task = assignedTasks[memberId];
