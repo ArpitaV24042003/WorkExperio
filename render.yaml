@@ -5,8 +5,8 @@ services:
     env: python
     region: oregon
     plan: starter
-    buildCommand: pip install -r backend/requirements.txt && cd backend && python init_db_production.py || true
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pwd && ls -la && if [ -f "backend/requirements.txt" ]; then pip install -r backend/requirements.txt; else echo "File not found, searching..." && find . -name "requirements.txt" && pip install -r $(find . -path "*/backend/requirements.txt" | head -1); fi && cd backend && python init_db_production.py || true
+    startCommand: cd ./backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SECRET_KEY
         generateValue: true
