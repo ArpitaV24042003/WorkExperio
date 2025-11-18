@@ -12,8 +12,9 @@ from sqlalchemy.types import JSON
 from .db import Base
 
 
-def uuid_pk() -> uuid.UUID:
-	return uuid.uuid4()
+def uuid_pk() -> str:
+	"""Generate UUID as string for SQLite compatibility"""
+	return str(uuid.uuid4())
 
 
 class User(Base):

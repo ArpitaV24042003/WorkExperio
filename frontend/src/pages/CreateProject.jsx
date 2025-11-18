@@ -154,9 +154,17 @@ export default function CreateProject() {
 
   const addMemberFromSearch = async (user) => {
     try {
+      // Ensure we get the actual UUID string, not index or number
       const userId = user.user_id || user.id;
       if (!userId) {
         setError("Invalid user data");
+        return;
+      }
+      
+      // Validate it's a UUID string (36 chars with hyphens)
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidPattern.test(String(userId))) {
+        setError("Invalid user ID format. Please search for a valid user.");
         return;
       }
       
@@ -166,13 +174,16 @@ export default function CreateProject() {
         return;
       }
       
-      if (userId && !teamMembers.includes(userId)) {
-        setTeamMembers([...teamMembers, userId]);
+      // Convert to string to ensure proper UUID format
+      const userIdString = String(userId).trim();
+      
+      if (userIdString && !teamMembers.includes(userIdString)) {
+        setTeamMembers([...teamMembers, userIdString]);
         // Store member details
         setTeamMemberDetails((prev) => ({
           ...prev,
-          [userId]: {
-            name: user.name || userId,
+          [userIdString]: {
+            name: user.name || userIdString,
             email: user.email || "",
             skills: user.skills || [],
           },
@@ -192,11 +203,19 @@ export default function CreateProject() {
   const addManualMember = () => {
     try {
       if (!manualMemberId || !manualMemberId.trim()) {
-        setError("Please enter a valid User ID");
+        setError("Please enter a valid User ID (UUID)");
         return;
       }
       
       const userId = manualMemberId.trim();
+      
+      // Validate it's a UUID string (36 chars with hyphens)
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidPattern.test(userId)) {
+        setError("Invalid UUID format. Please enter a valid user UUID (e.g., 123e4567-e89b-12d3-a456-426614174000)");
+        setManualMemberId("");
+        return;
+      }
       
       // Don't add creator again
       if (userId === user?.id) {
@@ -488,9 +507,14 @@ export default function CreateProject() {
       }
       
       // ALWAYS include creator as team member and leader (even if no other members)
-      const allTeamMembers = teamMembers.includes(user?.id) 
-        ? teamMembers 
-        : [user?.id, ...teamMembers.filter(id => id !== user?.id)];
+      // Ensure all user_ids are proper UUID strings
+      const validatedTeamMembers = teamMembers
+        .filter(id => id && typeof id === 'string' && id.trim().length > 0)
+        .map(id => String(id).trim());
+      
+      const allTeamMembers = validatedTeamMembers.includes(user?.id) 
+        ? validatedTeamMembers 
+        : [user?.id, ...validatedTeamMembers.filter(id => id !== user?.id)];
       const allRoles = { ...memberRoles };
       if (!allRoles[user?.id]) {
         allRoles[user?.id] = "Team Leader";
@@ -506,16 +530,20 @@ export default function CreateProject() {
       // Always create team with creator as member (even for solo projects)
       if (data.id) {
         try {
-          await apiClient.post(`/teams/projects/${data.id}/assign-team`, {
-            project_id: data.id,
-            user_ids: allTeamMembers.length > 0 ? allTeamMembers : [user?.id], // Ensure at least creator
-            role_map: allRoles, // Include assigned roles
-            task_map: allTasks, // Include assigned tasks
-          }, { timeout: 10000 }).catch(handleApiError);
+          // Ensure all user_ids are sent as strings (UUID format)
+          const payload = {
+            project_id: String(data.id),
+            user_ids: allTeamMembers.length > 0 ? allTeamMembers.map(id => String(id)) : [String(user?.id)],
+            role_map: allRoles,
+            task_map: allTasks,
+          };
+          
+          await apiClient.post(`/teams/projects/${data.id}/assign-team`, payload, { timeout: 10000 }).catch(handleApiError);
         } catch (teamErr) {
           console.error("Failed to assign team:", teamErr);
           // Still navigate even if team assignment fails - project is created
-          setError("Project created but team assignment failed. You can assign team members later.");
+          // Don't show error as toast - just log it
+          console.warn("Team assignment failed but project was created successfully");
         }
       }
       // Ensure auth state is persisted before navigation

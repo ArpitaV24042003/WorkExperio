@@ -81,7 +81,7 @@ export default function Projects() {
                 <Badge variant="outline">Team: {project.team_type}</Badge>
                 <div className="flex gap-2">
                   <Button variant="outline" asChild>
-                    <Link to={`/projects/${project.id}`}>Details</Link>
+                    <Link to={`/projects/${project.id}`}>View</Link>
                   </Button>
                   <Button variant="outline" asChild>
                     <Link to={`/projects/${project.id}/team`}>Team</Link>

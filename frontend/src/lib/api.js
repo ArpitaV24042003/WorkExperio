@@ -17,33 +17,30 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401/403 errors - redirect to login if token is invalid
+// Handle errors - ONLY redirect to login on 401 Unauthorized
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Only handle auth errors for actual authentication failures
-    // Don't logout on expected 401s (like checking if user exists)
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    // ONLY handle 401 Unauthorized - this means token is invalid/expired
+    // Do NOT redirect on 400/403/404/422/500 - these are business logic errors
+    if (error.response?.status === 401) {
       const currentPath = window.location.pathname;
       const authStore = useAuthStore.getState();
       
-      // Only logout if:
+      // Only logout and redirect if:
       // 1. We have a token (meaning we thought we were logged in)
       // 2. We're not on login/signup pages
-      // 3. The error is not from a public endpoint
-      // 4. The error is not from a project-specific endpoint (might be permission issue, not auth)
+      // 3. The error is not from a public/auth endpoint (might be expected)
       const isPublicEndpoint = error.config?.url?.includes("/auth/") || 
-                               error.config?.url?.includes("/public/");
-      const isProjectEndpoint = error.config?.url?.includes("/projects/");
+                               error.config?.url?.includes("/public/") ||
+                               error.config?.url?.includes("/signup") ||
+                               error.config?.url?.includes("/login");
       
-      // For project endpoints, don't auto-logout - let the component handle it
-      // This prevents redirects when user has valid token but no project access
       if (authStore.token && 
           !currentPath.includes("/login") && 
           !currentPath.includes("/signup") &&
-          !isPublicEndpoint &&
-          !isProjectEndpoint) {
-        // Token is invalid, logout
+          !isPublicEndpoint) {
+        // Token is invalid/expired, logout
         authStore.logout();
         // Redirect to login after a short delay to prevent flash
         setTimeout(() => {
@@ -53,6 +50,8 @@ apiClient.interceptors.response.use(
         }, 100);
       }
     }
+    // For all other errors (400/403/404/422/500), just reject the promise
+    // Components will handle these errors appropriately (show toast, error message, etc.)
     return Promise.reject(error);
   }
 );
