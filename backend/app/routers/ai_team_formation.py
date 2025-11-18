@@ -257,7 +257,12 @@ async def auto_create_project_with_team(
 		db.flush()
 		
 		# Add creator as solo member for now
+		# Add creator to team - only assign role for solo projects
+	if creator_role:
 		db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=creator_role))
+	else:
+		# No role assigned - member will select their own role
+		db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=None))
 		
 		project.team_id = team.id
 		db.commit()
@@ -307,7 +312,8 @@ async def auto_create_project_with_team(
 	all_member_ids = [current_user.id] + team_member_ids
 	for user_id in all_member_ids:
 		role = role_map.get(user_id, "Team Member")
-		db.add(TeamMember(team_id=team.id, user_id=user_id, role=role))
+		# For AI-formed teams, don't assign roles - members will select their own
+		db.add(TeamMember(team_id=team.id, user_id=user_id, role=None))
 	
 	project.team_id = team.id
 	project.team_type = "team" if has_team else "solo"

@@ -19,19 +19,27 @@ import { ShellLayout } from "./components/ShellLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, initialize, token } = useAuthStore();
+  const { initialize, token } = useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
   
   // Initialize auth state on mount (for page refresh)
   useEffect(() => {
+    // Always initialize from localStorage first
     initialize();
-    // Check token in localStorage
+    
+    // Check token in localStorage directly (more reliable)
     const storedToken = localStorage.getItem("token");
-    if (storedToken && !token) {
-      // Token exists but not in store, re-initialize
-      initialize();
+    if (storedToken) {
+      // Token exists, ensure store is updated
+      if (!token) {
+        initialize();
+      }
     }
-    setIsChecking(false);
+    
+    // Small delay to ensure state is synced
+    setTimeout(() => {
+      setIsChecking(false);
+    }, 50);
   }, [initialize, token]);
   
   // Show loading while checking auth
@@ -43,9 +51,11 @@ const ProtectedRoute = ({ children }) => {
     );
   }
   
-  // Check if authenticated or has token
-  const hasToken = localStorage.getItem("token");
-  if (!isAuthenticated && !hasToken) {
+  // Check if authenticated - check both store and localStorage
+  const storedToken = localStorage.getItem("token");
+  const hasAuth = storedToken || token;
+  
+  if (!hasAuth) {
     return <Navigate to="/login" replace />;
   }
   

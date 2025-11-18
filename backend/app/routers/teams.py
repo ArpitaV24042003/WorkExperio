@@ -280,6 +280,121 @@ def waitlist_status(project_id: str, current_user: User = Depends(get_current_us
 	}
 
 
+@router.patch("/projects/{project_id}/members/{user_id}/role")
+def update_member_role(
+	project_id: str,
+	user_id: str,
+	payload: Dict[str, str],  # {"role": "..."}
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""Update a team member's role. Members can only update their own role."""
+	project = db.query(Project).filter(Project.id == project_id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Check if user is a team member
+	if not project.team_id:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not assigned")
+	
+	team = db.query(Team).filter(Team.id == project.team_id).first()
+	if not team:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+	
+	# Find the team member
+	member = db.query(TeamMember).filter(
+		TeamMember.team_id == team.id,
+		TeamMember.user_id == user_id
+	).first()
+	
+	if not member:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+	
+	# Users can only update their own role (unless they're the project owner)
+	if user_id != current_user.id and project.owner_id != current_user.id:
+		raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update your own role")
+	
+	# Update role
+	member.role = payload.get("role", "").strip()
+	if not member.role:
+		raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role cannot be empty")
+	
+	db.commit()
+	db.refresh(member)
+	
+	return {"message": "Role updated successfully", "member": TeamMemberRead.model_validate(member)}
+
+
+@router.post("/projects/{project_id}/assign-tasks")
+def assign_tasks_automatically(
+	project_id: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""Automatically assign tasks to all team members based on their roles."""
+	project = db.query(Project).filter(Project.id == project_id).first()
+	if not project:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+	
+	# Check if user is project owner or team member
+	if project.owner_id != current_user.id:
+		if not project.team_id:
+			raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+		team = db.query(Team).filter(Team.id == project.team_id).first()
+		if team:
+			member = db.query(TeamMember).filter(TeamMember.team_id == team.id, TeamMember.user_id == current_user.id).first()
+			if not member:
+				raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+	
+	if not project.team_id:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not assigned")
+	
+	team = db.query(Team).filter(Team.id == project.team_id).first()
+	if not team:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+	
+	members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+	
+	# Check if all members have roles
+	if not all(m.role for m in members):
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail="All team members must have roles assigned before tasks can be assigned"
+		)
+	
+	# Assign tasks based on roles using AI
+	from ..ai.assistant_chat_ai import generate_assistant_response
+	
+	updated_members = []
+	for member in members:
+		if not member.task:  # Only assign if task is not already set
+			# Generate task based on role and project
+			task_prompt = f"Generate a specific, actionable task for a {member.role} working on project: {project.title}. Description: {project.description}. Provide a clear, actionable task description in one sentence."
+			
+			try:
+				response = generate_assistant_response(
+					task_prompt,
+					{
+						"project_title": project.title,
+						"project_description": project.description,
+						"member_role": member.role,
+					}
+				)
+				member.task = response.get("response", f"Work on {member.role} tasks for {project.title}")
+			except Exception as e:
+				# Fallback task
+				member.task = f"Work on {member.role} tasks for {project.title}"
+		
+		updated_members.append(member)
+	
+	db.commit()
+	
+	return {
+		"message": "Tasks assigned successfully",
+		"members": [TeamMemberRead.model_validate(m) for m in updated_members]
+	}
+
+
 @router.post("/waitlist/process-expired")
 def process_expired_waitlists(db: Session = Depends(get_db)):
 	"""

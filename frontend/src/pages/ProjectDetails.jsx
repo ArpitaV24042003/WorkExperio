@@ -24,31 +24,33 @@ export default function ProjectDetails() {
   const [taskCompletion, setTaskCompletion] = useState({}); // {user_id: {completed: bool, progress: number}}
   const [nextSteps, setNextSteps] = useState([]);
   const [recentChats, setRecentChats] = useState([]);
+  const [selectedRole, setSelectedRole] = useState(""); // Current user's selected role
+  const [updatingRole, setUpdatingRole] = useState(false);
+  const [suggestedRoles, setSuggestedRoles] = useState([]); // AI-suggested roles
 
   useEffect(() => {
     const loadProject = async () => {
       // Ensure auth is initialized from store
       const authStore = useAuthStore.getState();
-      if (!authStore.isAuthenticated && !authStore.token) {
-        // Try to initialize from localStorage
-        authStore.initialize();
+      authStore.initialize();
+      
+      // Check token in localStorage directly
+      const storedToken = localStorage.getItem("token");
+      if (!storedToken && !authStore.token) {
+        // No token at all - ProtectedRoute will handle redirect
+        setLoading(false);
+        return;
       }
       
       // Wait a bit for auth to initialize
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const token = useAuthStore.getState().token || localStorage.getItem("token");
-      if (!token) {
-        // Don't set error immediately - try to load anyway as token might be in request header
-        console.warn("No token found, but attempting to load project anyway");
-      }
+      await new Promise(resolve => setTimeout(resolve, 150));
       
       try {
         setLoading(true);
         setError(null);
         const { data } = await apiClient.get(`/projects/${projectId}`, { timeout: 10000 }).catch((err) => {
           if (err.response?.status === 401 || err.response?.status === 403) {
-            // Only set error, don't redirect - let ProtectedRoute handle it
+            // Only set error, don't redirect - ProtectedRoute will handle navigation
             setError("You don't have access to this project. Please ensure you're logged in and are a team member.");
             setLoading(false);
             return null;
@@ -75,6 +77,12 @@ export default function ProjectDetails() {
             setTeam(teamData.data.team);
             const members = teamData.data.members || [];
             setTeamMembers(members);
+            
+            // Check if current user has a role
+            const currentMember = members.find(m => m.user_id === user?.id);
+            if (currentMember) {
+              setSelectedRole(currentMember.role || "");
+            }
             
             // Fetch user details for each member
             const details = {};
@@ -333,6 +341,68 @@ export default function ProjectDetails() {
         </Card>
       )}
 
+      {/* Role Selection for Current User (if not selected) */}
+      {team && teamMembers.length > 0 && user?.id && !selectedRole && (
+        <Card className="border-primary">
+          <CardHeader>
+            <CardTitle>Select Your Role</CardTitle>
+            <CardDescription>Choose your role in this project. Tasks will be assigned automatically once all team members select their roles.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="role-select">Your Role</Label>
+                <Input
+                  id="role-select"
+                  placeholder="e.g., Frontend Developer, Backend Developer, Designer, etc."
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                  disabled={updatingRole}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Select a role that matches your skills and interests for this project.
+                </p>
+              </div>
+              <Button 
+                onClick={async () => {
+                  if (!selectedRole.trim()) return;
+                  setUpdatingRole(true);
+                  try {
+                    await apiClient.patch(`/teams/projects/${projectId}/members/${user.id}/role`, {
+                      role: selectedRole.trim()
+                    }).catch(handleApiError);
+                    // Reload team data
+                    const teamData = await apiClient.get(`/teams/projects/${projectId}/team`).catch(handleApiError);
+                    if (teamData?.data?.members) {
+                      setTeamMembers(teamData.data.members);
+                      // Check if all members have roles, then auto-assign tasks
+                      const allHaveRoles = teamData.data.members.every(m => m.role);
+                      if (allHaveRoles) {
+                        // Auto-assign tasks
+                        await apiClient.post(`/teams/projects/${projectId}/assign-tasks`).catch(handleApiError);
+                        // Reload again to get tasks
+                        const updatedTeam = await apiClient.get(`/teams/projects/${projectId}/team`).catch(handleApiError);
+                        if (updatedTeam?.data?.members) {
+                          setTeamMembers(updatedTeam.data.members);
+                        }
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Failed to update role:", err);
+                    setError(err.message || "Failed to update role");
+                  } finally {
+                    setUpdatingRole(false);
+                  }
+                }}
+                disabled={!selectedRole.trim() || updatingRole}
+              >
+                {updatingRole ? "Saving..." : "Save Role"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Team Members Display */}
       {team && teamMembers.length > 0 && (
         <Card>
@@ -344,20 +414,24 @@ export default function ProjectDetails() {
             <div className="space-y-3">
               {teamMembers.map((member) => {
                 const isLeader = member.user_id === project.owner_id;
+                const isCurrentUser = member.user_id === user?.id;
                 const memberInfo = memberDetails[member.user_id] || { name: member.user_id, email: "" };
                 return (
-                  <div key={member.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div key={member.id} className={`flex items-center justify-between rounded-md border p-3 ${isCurrentUser ? "bg-primary/5" : ""}`}>
                     <div className="flex items-center gap-3 flex-1">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="font-medium">{memberInfo.name}</p>
                           {isLeader && <Badge variant="secondary">Leader</Badge>}
+                          {isCurrentUser && <Badge variant="outline">You</Badge>}
                         </div>
                         {memberInfo.email && (
                           <p className="text-xs text-muted-foreground">{memberInfo.email}</p>
                         )}
-                        {member.role && (
-                          <p className="text-sm text-muted-foreground mt-1">Role: {member.role}</p>
+                        {member.role ? (
+                          <p className="text-sm text-muted-foreground mt-1">Role: <span className="font-medium">{member.role}</span></p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground mt-1 italic">Role: Pending selection</p>
                         )}
                         {member.task && (
                           <p className="text-sm text-muted-foreground mt-1">

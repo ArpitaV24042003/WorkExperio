@@ -1050,79 +1050,57 @@ export default function CreateProject() {
             )}
 
             <div className="space-y-3">
-              <Label>Assign Roles to Team Members</Label>
-              {/* Creator (always Team Leader) */}
+              <Label>Your Role (Team Leader)</Label>
+              {/* Creator (always Team Leader) - can select their own role */}
               <div className="rounded-md border p-3 space-y-2 bg-primary/5">
                 <div>
-                  <p className="font-medium">You (Creator)</p>
+                  <p className="font-medium">You (Creator & Team Leader)</p>
                   <p className="text-xs text-muted-foreground">{user?.email || user?.id}</p>
                 </div>
                 <Input
+                  placeholder="Select or enter your role"
                   value={memberRoles[user?.id] || "Team Leader"}
                   onChange={(e) => setMemberRoles((prev) => ({ ...prev, [user?.id]: e.target.value }))}
-                  disabled
-                  className="bg-background"
+                  list="leader-roles"
                 />
-                <p className="text-xs text-muted-foreground">You are automatically the Team Leader</p>
+                {suggestedRoles.length > 0 && (
+                  <datalist id="leader-roles">
+                    {suggestedRoles.map((role) => (
+                      <option key={role} value={role} />
+                    ))}
+                  </datalist>
+                )}
+                <p className="text-xs text-muted-foreground">Select your role. Team members will select their own roles after project creation.</p>
               </div>
 
-              {/* Other team members */}
-              {teamMembers.filter(id => id !== user?.id).map((memberId) => {
-                const memberInfo = teamMemberDetails[memberId] || { name: memberId, skills: [] };
-                return (
-                  <div key={memberId} className="rounded-md border p-3 space-y-2">
-                    <div>
-                      <p className="font-medium">{memberInfo.name}</p>
-                      <p className="text-xs text-muted-foreground">{memberInfo.email || memberId}</p>
-                      {memberInfo.skills && memberInfo.skills.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {memberInfo.skills.slice(0, 5).map((skill, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">{skill}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <div>
-                        <Label className="text-xs">Role</Label>
-                        <Input
-                          placeholder="Select or enter role"
-                          value={memberRoles[memberId] || ""}
-                          onChange={(e) => setMemberRoles((prev) => ({ ...prev, [memberId]: e.target.value }))}
-                          list={`roles-${memberId}`}
-                        />
-                        {suggestedRoles.length > 0 && (
-                          <datalist id={`roles-${memberId}`}>
-                            {suggestedRoles.filter(r => r !== "Team Leader").map((role) => (
-                              <option key={role} value={role} />
-                            ))}
-                          </datalist>
-                        )}
-                      </div>
-                      {domain && availableProjects.length > 0 && (
+              {/* Team Members Info - No role assignment here */}
+              {teamMembers.filter(id => id !== user?.id).length > 0 && (
+                <div className="rounded-md border p-3 space-y-2 bg-muted/30">
+                  <Label className="text-sm font-medium">Team Members</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Team members will be able to select their own roles after the project is created.
+                  </p>
+                  {teamMembers.filter(id => id !== user?.id).map((memberId) => {
+                    const memberInfo = teamMemberDetails[memberId] || { name: memberId, skills: [] };
+                    return (
+                      <div key={memberId} className="flex items-center justify-between rounded-md border p-2 bg-background">
                         <div>
-                          <Label className="text-xs">Preferred Project to Work On</Label>
-                          <select
-                            value={memberPreferredProjects[memberId] || ""}
-                            onChange={(e) => setMemberPreferredProjects((prev) => ({ ...prev, [memberId]: e.target.value }))}
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                          >
-                            <option value="">Select preferred project...</option>
-                            {availableProjects.map((project, index) => (
-                              <option key={index} value={project}>
-                                {project}
-                              </option>
-                            ))}
-                          </select>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Choose which project template you'd like to work on from {domain}
-                          </p>
+                          <p className="text-sm font-medium">{memberInfo.name}</p>
+                          <p className="text-xs text-muted-foreground">{memberInfo.email || memberId}</p>
+                          {memberInfo.skills && memberInfo.skills.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {memberInfo.skills.slice(0, 3).map((skill, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">{skill}</Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                        <Badge variant="secondary" className="text-xs">Role: Pending</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-between">
