@@ -210,33 +210,31 @@ export default function TeamChat() {
   };
 
   return (
-    <Card className="flex h-[70vh] flex-col">
-      <CardHeader>
+    <Card className="flex h-[80vh] flex-col bg-background">
+      <CardHeader className="border-b bg-muted/50 pb-3">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Team chat</CardTitle>
-            <CardDescription>
-              Coordinate tasks, unblock teammates, and capture decisions.
-              {connected ? (
-                <span className="ml-2 text-green-600">● Connected</span>
-              ) : (
-                <span className="ml-2 text-red-600">● Disconnected</span>
-              )}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Online users indicator */}
-            {onlineUsers.size > 0 && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="h-2 w-2 rounded-full bg-green-500"></span>
-                <span>{onlineUsers.size} online</span>
-              </div>
-            )}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-semibold">
+              T
+            </div>
+            <div>
+              <CardTitle className="text-lg">Team Chat</CardTitle>
+              <CardDescription className="text-xs">
+                {connected ? (
+                  <span className="text-green-600">● Online</span>
+                ) : (
+                  <span className="text-red-600">● Offline</span>
+                )}
+                {onlineUsers.size > 0 && (
+                  <span className="ml-2">{onlineUsers.size} member{onlineUsers.size !== 1 ? "s" : ""} online</span>
+                )}
+              </CardDescription>
+            </div>
           </div>
         </div>
         {/* Typing indicator */}
         {typingUsers.size > 0 && (
-          <div className="mt-2 text-sm text-muted-foreground italic">
+          <div className="mt-2 text-xs text-muted-foreground italic animate-pulse">
             {Array.from(typingUsers)
               .map((userId) => userNames[userId] || userId)
               .filter(Boolean)
@@ -245,80 +243,118 @@ export default function TeamChat() {
           </div>
         )}
       </CardHeader>
-      <CardContent className="flex-1 space-y-4 overflow-y-auto">
+      <CardContent className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-background to-muted/20">
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading messages...</p>
         ) : messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
         ) : (
-          messages.map((message) => {
+          messages.map((message, index) => {
             const senderName = userNames[message.user_id] || message.user_id;
             const isCurrentUser = message.user_id === user?.id;
             const isOnline = onlineUsers.has(message.user_id);
+            const prevMessage = index > 0 ? messages[index - 1] : null;
+            const showAvatar = !prevMessage || prevMessage.user_id !== message.user_id;
+            const messageTime = new Date(message.created_at ?? Date.now());
+            const showTime = !prevMessage || 
+              Math.abs(new Date(prevMessage.created_at ?? Date.now()).getTime() - messageTime.getTime()) > 300000; // 5 minutes
+            
             return (
-              <div
-                key={message.id}
-                className={`flex gap-2 ${
-                  isCurrentUser ? "justify-end" : "justify-start"
-                }`}
-              >
-                {!isCurrentUser && (
-                  <div className="flex flex-col items-center">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold">
-                      {senderName.charAt(0).toUpperCase()}
-                    </div>
-                    {isOnline && (
-                      <span className="h-2 w-2 rounded-full bg-green-500 -mt-1 border-2 border-background"></span>
-                    )}
+              <div key={message.id}>
+                {showTime && (
+                  <div className="flex justify-center my-4">
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                      {messageTime.toLocaleDateString() === new Date().toLocaleDateString()
+                        ? `Today, ${messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : messageTime.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
                   </div>
                 )}
                 <div
-                  className={`rounded-lg px-4 py-2 max-w-[70%] ${
-                    isCurrentUser
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
+                  className={`flex gap-2 items-end ${
+                    isCurrentUser ? "justify-end" : "justify-start"
+                  } ${showAvatar ? "mt-2" : "mt-1"}`}
                 >
                   {!isCurrentUser && (
-                    <p className="text-xs font-semibold mb-1">{senderName}</p>
-                  )}
-                  <p className="text-sm break-words whitespace-pre-wrap">{message.content}</p>
-                  <p className="text-[10px] opacity-70 mt-1">
-                    {new Date(message.created_at ?? Date.now()).toLocaleTimeString()}
-                  </p>
-                </div>
-                {isCurrentUser && (
-                  <div className="flex flex-col items-center">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold">
-                      You
+                    <div className="flex flex-col items-center shrink-0">
+                      {showAvatar ? (
+                        <>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold border-2 border-primary/30">
+                            {senderName.charAt(0).toUpperCase()}
+                          </div>
+                          {isOnline && (
+                            <span className="h-2.5 w-2.5 rounded-full bg-green-500 -mt-2 border-2 border-background"></span>
+                          )}
+                        </>
+                      ) : (
+                        <div className="h-10 w-10"></div>
+                      )}
                     </div>
-                    {isOnline && (
-                      <span className="h-2 w-2 rounded-full bg-green-500 -mt-1 border-2 border-background"></span>
+                  )}
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 max-w-[75%] shadow-sm ${
+                      isCurrentUser
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : "bg-muted text-foreground rounded-bl-md"
+                    }`}
+                  >
+                    {!isCurrentUser && showAvatar && (
+                      <p className="text-xs font-semibold mb-1.5 opacity-90">{senderName}</p>
                     )}
+                    <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                    <p className={`text-[10px] mt-1.5 ${isCurrentUser ? "opacity-80" : "opacity-60"}`}>
+                      {messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
                   </div>
-                )}
+                  {isCurrentUser && (
+                    <div className="flex flex-col items-center shrink-0">
+                      {showAvatar ? (
+                        <>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-semibold border-2 border-secondary/50">
+                            You
+                          </div>
+                          {isOnline && (
+                            <span className="h-2.5 w-2.5 rounded-full bg-green-500 -mt-2 border-2 border-background"></span>
+                          )}
+                        </>
+                      ) : (
+                        <div className="h-10 w-10"></div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })
         )}
         <div ref={messagesEndRef} />
       </CardContent>
-      <CardFooter>
-        <form className="flex w-full gap-2" onSubmit={sendMessage}>
-          <Input
-            value={input}
-            onChange={handleInputChange}
-            placeholder={connected ? "Type a message..." : "Connecting..."}
-            disabled={!connected}
-            onKeyPress={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage(e);
-              }
-            }}
-          />
-          <Button type="submit" disabled={!connected || !input.trim()}>
-            Send
+      <CardFooter className="border-t bg-muted/30 p-3">
+        <form className="flex w-full gap-2 items-end" onSubmit={sendMessage}>
+          <div className="flex-1 relative">
+            <Input
+              value={input}
+              onChange={handleInputChange}
+              placeholder={connected ? "Type a message..." : "Connecting..."}
+              disabled={!connected}
+              className="pr-12 rounded-full bg-background border-2 focus:border-primary"
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage(e);
+                }
+              }}
+            />
+          </div>
+          <Button 
+            type="submit" 
+            disabled={!connected || !input.trim()}
+            className="rounded-full h-10 w-10 p-0"
+            size="icon"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-5 w-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L6 12zm0 0h8.5" />
+            </svg>
           </Button>
         </form>
       </CardFooter>

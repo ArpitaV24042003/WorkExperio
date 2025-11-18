@@ -71,6 +71,33 @@ export default function PerformanceReport() {
               <Badge variant="secondary">{report.communication_score}</Badge>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>File Uploads</CardTitle>
+              <CardDescription>Files and code contributions uploaded.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Badge variant="secondary">{report.files_uploaded || 0} files</Badge>
+                {report.files_contribution_score !== undefined && (
+                  <p className="text-xs text-muted-foreground">
+                    Contribution: {report.files_contribution_score.toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          {report.total_xp_awarded !== undefined && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Total XP</CardTitle>
+                <CardDescription>Experience points earned.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Badge variant="secondary">{report.total_xp_awarded} XP</Badge>
+              </CardContent>
+            </Card>
+          )}
         </div>
       ) : (
         <Card>

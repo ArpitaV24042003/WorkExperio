@@ -5,7 +5,7 @@ services:
     env: python
     region: oregon
     plan: starter
-    buildCommand: REQ_FILE=$(find . -path "*/backend/requirements.txt" -type f | head -1) && pip install -r "$REQ_FILE"
+    buildCommand: REQ_FILE=$(find . -path "*/backend/requirements.txt" -type f | head -1) && pip install -r "$REQ_FILE" && cd backend && alembic upgrade head
     startCommand: cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:
       - key: SECRET_KEY

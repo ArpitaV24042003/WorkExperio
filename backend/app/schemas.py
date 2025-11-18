@@ -215,6 +215,8 @@ class PerformanceAnalysisResponse(BaseModel):
 	participation_score: float
 	task_consistency_score: float
 	communication_score: float
+	files_uploaded: int = 0
+	files_contribution_score: float = 0.0
 	review_summary: Dict[str, Any]
 	total_xp_awarded: int
 
@@ -233,3 +235,24 @@ class ReviewRequest(BaseModel):
 class MetricsResponse(BaseModel):
 	total_requests: int
 	average_duration_ms: float
+
+
+class ProjectFileRead(BaseSchema):
+	id: str
+	project_id: str
+	user_id: str
+	filename: str
+	file_path: str
+	file_size: int
+	file_type: Optional[str] = None
+	mime_type: Optional[str] = None
+	description: Optional[str] = None
+	uploaded_at: datetime
+
+
+class ProjectFileUploadResponse(BaseModel):
+	id: str
+	filename: str
+	file_size: int
+	uploaded_at: datetime
+	message: str

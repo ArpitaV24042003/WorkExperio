@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
 	secret_key: str = "change_me_development_secret"
 	algorithm: str = "HS256"
-	access_token_expire_minutes: int = 60
+	access_token_expire_minutes: int = 43200  # 30 days (30 * 24 * 60 = 43200 minutes)
 	database_url: str = "sqlite:///./backend/app.db"
 	env: str = "development"
 	log_level: str = "INFO"

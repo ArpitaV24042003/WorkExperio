@@ -120,28 +120,46 @@ def assistant_chat(payload: AssistantChatRequest, current_user=Depends(get_curre
 
 @router.post("/analyze-performance/{project_id}", response_model=PerformanceAnalysisResponse)
 def analyze_project_performance(project_id: str, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
+	from ..models import ProjectFile
+	
 	project = db.query(Project).filter(Project.id == project_id).first()
 	if not project:
 		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
 	messages_count = db.query(ChatMessage).filter(ChatMessage.project_id == project_id).count()
-	stats_entries = db.query(UserStats).all()
+	
+	# Get files uploaded for this project by current user
+	files_uploaded = db.query(ProjectFile).filter(
+		ProjectFile.project_id == project_id,
+		ProjectFile.user_id == current_user.id
+	).count()
+	
+	# Get user stats for reviews
+	user_stats = db.query(UserStats).filter(UserStats.user_id == current_user.id).first()
 	reviews: List[Dict[str, Any]] = []
-	for stats in stats_entries:
+	if user_stats and isinstance(user_stats.reviews_received, dict):
 		reviews.extend(
 			[
 				{"rating": item.get("rating", 0)}
-				for item in stats.reviews_received.get(project_id, [])
-				if isinstance(stats.reviews_received, dict)
+				for item in user_stats.reviews_received.get(project_id, [])
 			]
 		)
+	
+	# Get tasks completed from user stats
+	tasks_completed = user_stats.tasks_completed if user_stats else 0
 
-	result = analyze_performance(tasks_completed=5, messages_sent=messages_count, reviews=reviews, xp_base=100)
+	result = analyze_performance(
+		tasks_completed=tasks_completed,
+		messages_sent=messages_count,
+		reviews=reviews,
+		xp_base=100,
+		files_uploaded=files_uploaded
+	)
 
 	model_log = ModelPrediction(
 		project_id=project_id,
 		model_name="performance_ai",
-		input_json={"messages_count": messages_count},
+		input_json={"messages_count": messages_count, "files_uploaded": files_uploaded, "tasks_completed": tasks_completed},
 		output_json=result,
 		score=None,
 	)

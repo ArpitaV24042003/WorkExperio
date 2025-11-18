@@ -163,6 +163,7 @@ class UserStats(Base):
 	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
 	total_xp: Mapped[int] = mapped_column(Integer, default=0)
 	tasks_completed: Mapped[int] = mapped_column(Integer, default=0)
+	files_uploaded: Mapped[int] = mapped_column(Integer, default=0)  # Track file uploads as metric
 	reviews_received: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
 	ai_score: Mapped[float] = mapped_column(Float, default=0.0)
 	updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -180,3 +181,18 @@ class ModelPrediction(Base):
 	output_json: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
 	score: Mapped[Optional[float]] = mapped_column(Float)
 	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ProjectFile(Base):
+	__tablename__ = "project_files"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+	filename: Mapped[str] = mapped_column(String(255))
+	file_path: Mapped[str] = mapped_column(String(500))
+	file_size: Mapped[int] = mapped_column(Integer)  # Size in bytes
+	file_type: Mapped[Optional[str]] = mapped_column(String(50))  # e.g., "code", "document", "folder"
+	mime_type: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "text/plain", "application/zip"
+	description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+	uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

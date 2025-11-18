@@ -54,7 +54,8 @@ def init_database():
     expected_tables = {
         "users", "resumes", "educations", "experiences", "skills",
         "projects", "teams", "team_members", "project_waitlists",
-        "chat_messages", "user_stats", "model_predictions"
+        "chat_messages", "user_stats", "model_predictions", "project_files",
+        "ai_conversations"
     }
     
     missing = expected_tables - existing_tables

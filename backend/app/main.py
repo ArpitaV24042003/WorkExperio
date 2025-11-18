@@ -4,7 +4,7 @@ from starlette.websockets import WebSocketState
 from datetime import datetime
 import time
 
-from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, ai_team_formation
+from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, ai_team_formation, files
 from .db import create_all_tables
 from .metrics_store import metrics_store
 
@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
 	app.include_router(xp.router, prefix="/users", tags=["xp"])
 	app.include_router(metrics.router, tags=["metrics"])
 	app.include_router(admin.router, prefix="/admin", tags=["admin"])
+	app.include_router(files.router, prefix="/files", tags=["files"])
 
 	# Simple middleware for request metrics (duration)
 	@app.middleware("http")
@@ -105,11 +106,14 @@ def create_app() -> FastAPI:
 		logger.info("Starting WorkExperio API...")
 		try:
 			logger.info("Initializing database tables...")
+			# For PostgreSQL on Render, tables should be created via migrations
+			# But we also call create_all_tables as a fallback for new tables
 			create_all_tables()
 			logger.info("✅ Database tables initialized successfully")
 		except Exception as e:
 			logger.error(f"❌ Could not create database tables on startup: {e}")
 			logger.warning("⚠️  Server will start, but database operations may fail until DATABASE_URL is configured correctly.")
+			logger.warning("⚠️  Make sure to run migrations: alembic upgrade head")
 			# Don't raise - allow server to start even if DB init fails
 		logger.info("✅ WorkExperio API started successfully")
 

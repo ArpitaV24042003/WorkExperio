@@ -5,6 +5,8 @@ import { apiClient, handleApiError } from "../lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 
 export default function ProjectDetails() {
   const { projectId } = useParams();
@@ -16,12 +18,21 @@ export default function ProjectDetails() {
   const [memberDetails, setMemberDetails] = useState({}); // {user_id: {name, email}}
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [projectFiles, setProjectFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
 
   useEffect(() => {
     const loadProject = async () => {
-      // Ensure auth is initialized
-      const token = localStorage.getItem("token");
-      if (!token && !user?.id) {
+      // Ensure auth is initialized from store
+      const authStore = useAuthStore.getState();
+      if (!authStore.isAuthenticated && !authStore.token) {
+        // Try to initialize from localStorage
+        authStore.initialize();
+      }
+      
+      const token = useAuthStore.getState().token || localStorage.getItem("token");
+      if (!token) {
         setError("Please log in to view this project");
         setLoading(false);
         return;
@@ -81,6 +92,14 @@ export default function ProjectDetails() {
             console.error("Failed to load team:", err);
           }
         }
+        
+        // Load project files
+        try {
+          const filesData = await apiClient.get(`/files/projects/${projectId}/files`).catch(handleApiError);
+          setProjectFiles(filesData.data || []);
+        } catch (err) {
+          console.error("Failed to load files:", err);
+        }
       } catch (error) {
         console.error(error);
         setError(error.message || "Failed to load project");
@@ -90,6 +109,43 @@ export default function ProjectDetails() {
     };
     loadProject();
   }, [projectId]);
+  
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const { data } = await apiClient.post(
+        `/files/projects/${projectId}/upload`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      ).catch(handleApiError);
+      
+      // Reload files
+      const filesData = await apiClient.get(`/files/projects/${projectId}/files`).catch(handleApiError);
+      setProjectFiles(filesData.data || []);
+      setShowUpload(false);
+    } catch (error) {
+      console.error("Failed to upload file:", error);
+      setError(error.message || "Failed to upload file");
+    } finally {
+      setUploading(false);
+    }
+  };
+  
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  };
 
   if (loading) {
     return (
@@ -156,6 +212,11 @@ export default function ProjectDetails() {
                         {member.role && (
                           <p className="text-sm text-muted-foreground mt-1">Role: {member.role}</p>
                         )}
+                        {member.task && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            <span className="font-medium">Task:</span> {member.task}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Joined: {new Date(member.joined_at).toLocaleDateString()}
                         </p>
@@ -165,6 +226,70 @@ export default function ProjectDetails() {
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Project Files Section */}
+      {team && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Project Files</CardTitle>
+                <CardDescription>Upload and manage project files, code, and documents.</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowUpload(!showUpload)}>
+                {showUpload ? "Cancel" : "Upload File"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {showUpload && (
+              <div className="mb-4 p-4 border rounded-md">
+                <Label htmlFor="file-upload">Select file or folder (zip)</Label>
+                <Input
+                  id="file-upload"
+                  type="file"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                  className="mt-2"
+                />
+                {uploading && <p className="text-sm text-muted-foreground mt-2">Uploading...</p>}
+              </div>
+            )}
+            {projectFiles.length > 0 ? (
+              <div className="space-y-2">
+                {projectFiles.map((file) => (
+                  <div key={file.id} className="flex items-center justify-between rounded-md border p-3">
+                    <div className="flex-1">
+                      <p className="font-medium">{file.filename}</p>
+                      <div className="flex gap-2 mt-1">
+                        {file.file_type && <Badge variant="outline">{file.file_type}</Badge>}
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file.file_size)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(file.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      {file.description && (
+                        <p className="text-sm text-muted-foreground mt-1">{file.description}</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        window.open(`/files/projects/${projectId}/files/${file.id}/download`, "_blank");
+                      }}
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No files uploaded yet. Upload your work to share with the team.</p>
+            )}
           </CardContent>
         </Card>
       )}
