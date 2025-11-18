@@ -22,8 +22,12 @@ export default function CreateProject() {
   const [searching, setSearching] = useState(false);
   const [searchMode, setSearchMode] = useState("email"); // email, name, user_id
   const [domain, setDomain] = useState(""); // Project domain (e.g., "Web Development", "Data Science")
+  const [availableDomains, setAvailableDomains] = useState([]); // List of available domains
+  const [selectedProjectTemplate, setSelectedProjectTemplate] = useState(""); // Selected project from domain templates
+  const [availableProjects, setAvailableProjects] = useState([]); // Projects for selected domain
   const [problemStatement, setProblemStatement] = useState(""); // Clarified problem statement
   const [memberRoles, setMemberRoles] = useState({}); // {user_id: role}
+  const [memberPreferredProjects, setMemberPreferredProjects] = useState({}); // {user_id: preferred_project_template}
   const [suggestedRoles, setSuggestedRoles] = useState([]); // AI-suggested roles based on domain
   const [assignedTasks, setAssignedTasks] = useState({}); // {user_id: task}
   const [form, setForm] = useState({ title: "", description: "", ai_generated: false, team_type: "none" });
@@ -34,6 +38,38 @@ export default function CreateProject() {
   const [showWaitlistPrompt, setShowWaitlistPrompt] = useState(false); // Show waitlist prompt when no team found
   const [waitlistData, setWaitlistData] = useState(null); // Store project data when waiting for team
 
+  useEffect(() => {
+    // Load available domains
+    const loadDomains = async () => {
+      try {
+        const { data } = await apiClient.get("/domains/domains").catch(handleApiError);
+        setAvailableDomains(data || []);
+      } catch (err) {
+        console.error("Failed to load domains:", err);
+      }
+    };
+    loadDomains();
+  }, []);
+  
+  useEffect(() => {
+    // Load projects for selected domain
+    if (domain) {
+      const loadProjects = async () => {
+        try {
+          const { data } = await apiClient.get(`/domains/domains/${encodeURIComponent(domain)}/projects`).catch(handleApiError);
+          setAvailableProjects(data || []);
+        } catch (err) {
+          console.error("Failed to load projects for domain:", err);
+          setAvailableProjects([]);
+        }
+      };
+      loadProjects();
+    } else {
+      setAvailableProjects([]);
+      setSelectedProjectTemplate("");
+    }
+  }, [domain]);
+  
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -482,7 +518,19 @@ export default function CreateProject() {
           setError("Project created but team assignment failed. You can assign team members later.");
         }
       }
-      navigate(`/projects/${data.id}`);
+      // Ensure auth state is updated and persisted before navigation
+      const authStore = useAuthStore.getState();
+      if (authStore.token) {
+        // Ensure token is in localStorage
+        localStorage.setItem("token", authStore.token);
+        if (authStore.user) {
+          localStorage.setItem("user", JSON.stringify(authStore.user));
+        }
+      }
+      // Small delay to ensure state is persisted, then navigate
+      setTimeout(() => {
+        navigate(`/projects/${data.id}`, { replace: true });
+      }, 200);
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err.message || "Failed to create project. Please try again.";
       setError(errorMessage);
@@ -922,12 +970,12 @@ export default function CreateProject() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="domain">Project Domain</Label>
-              <Input
+              <select
                 id="domain"
-                placeholder="e.g., Web Development, Data Science, Mobile App, AI/ML, etc."
                 value={domain}
                 onChange={async (e) => {
                   setDomain(e.target.value);
+                  setSelectedProjectTemplate(""); // Reset project selection when domain changes
                   // Auto-suggest roles when domain is entered and we have team members
                   if (e.target.value.trim() && teamMembers.length > 0) {
                     try {
@@ -940,11 +988,52 @@ export default function CreateProject() {
                     }
                   }
                 }}
-              />
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Select a domain...</option>
+                {availableDomains.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-muted-foreground">
-                The domain helps AI generate appropriate project ideas and assign relevant tasks.
+                Choose a domain to see available project templates. The domain helps AI generate appropriate project ideas and assign relevant tasks.
               </p>
             </div>
+            
+            {/* Project Template Selection */}
+            {domain && availableProjects.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="projectTemplate">Select Project Template (Optional)</Label>
+                <select
+                  id="projectTemplate"
+                  value={selectedProjectTemplate}
+                  onChange={(e) => {
+                    setSelectedProjectTemplate(e.target.value);
+                    if (e.target.value) {
+                      // Auto-fill form with selected project
+                      setForm(prev => ({
+                        ...prev,
+                        title: e.target.value,
+                        description: `Build a ${e.target.value.toLowerCase()} project in the ${domain} domain.`
+                      }));
+                    }
+                  }}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Choose a project template (or create custom)...</option>
+                  {availableProjects.map((project, index) => (
+                    <option key={index} value={project}>
+                      {project}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Select from {availableProjects.length} available project templates for {domain}, or create a custom project.
+                </p>
+              </div>
+            )}
 
             {suggestedRoles.length > 0 && (
               <div className="rounded-md border p-3 bg-muted/50">
@@ -994,18 +1083,41 @@ export default function CreateProject() {
                       )}
                     </div>
                     <div className="space-y-2">
-                      <Input
-                        placeholder="Select or enter role"
-                        value={memberRoles[memberId] || ""}
-                        onChange={(e) => setMemberRoles((prev) => ({ ...prev, [memberId]: e.target.value }))}
-                        list={`roles-${memberId}`}
-                      />
-                      {suggestedRoles.length > 0 && (
-                        <datalist id={`roles-${memberId}`}>
-                          {suggestedRoles.filter(r => r !== "Team Leader").map((role) => (
-                            <option key={role} value={role} />
-                          ))}
-                        </datalist>
+                      <div>
+                        <Label className="text-xs">Role</Label>
+                        <Input
+                          placeholder="Select or enter role"
+                          value={memberRoles[memberId] || ""}
+                          onChange={(e) => setMemberRoles((prev) => ({ ...prev, [memberId]: e.target.value }))}
+                          list={`roles-${memberId}`}
+                        />
+                        {suggestedRoles.length > 0 && (
+                          <datalist id={`roles-${memberId}`}>
+                            {suggestedRoles.filter(r => r !== "Team Leader").map((role) => (
+                              <option key={role} value={role} />
+                            ))}
+                          </datalist>
+                        )}
+                      </div>
+                      {domain && availableProjects.length > 0 && (
+                        <div>
+                          <Label className="text-xs">Preferred Project to Work On</Label>
+                          <select
+                            value={memberPreferredProjects[memberId] || ""}
+                            onChange={(e) => setMemberPreferredProjects((prev) => ({ ...prev, [memberId]: e.target.value }))}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          >
+                            <option value="">Select preferred project...</option>
+                            {availableProjects.map((project, index) => (
+                              <option key={index} value={project}>
+                                {project}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Choose which project template you'd like to work on from {domain}
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1229,8 +1341,14 @@ export default function CreateProject() {
                       const role = memberRoles[memberId] || (memberId === user?.id ? "Team Leader" : "Team Member");
                       const skills = memberInfo.skills || [];
                       
+                      // Use preferred project if member selected one, otherwise use main project
+                      const preferredProject = memberPreferredProjects[memberId];
+                      const projectContext = preferredProject 
+                        ? `${preferredProject} (from ${domain} domain)`
+                        : (aiIdea?.title || form.title || "the project");
+                      
                       // Call AI to generate task for this member
-                      const taskPrompt = `Generate a specific, actionable task for a ${role} with skills: ${skills.join(", ") || "general skills"}. Project: ${aiIdea?.title || form.title || "the project"} Domain: ${domain || "general"} Problem: ${problemStatement || "solve the project goals"}. Provide a clear, actionable task description in one sentence.`;
+                      const taskPrompt = `Generate a specific, actionable task for a ${role} with skills: ${skills.join(", ") || "general skills"}. Project: ${projectContext} Domain: ${domain || "general"} Problem: ${problemStatement || "solve the project goals"}. ${preferredProject ? `The team member wants to work on: ${preferredProject}.` : ""} Provide a clear, actionable task description in one sentence.`;
                       
                       try {
                         const { data } = await apiClient.post("/ai/assistant-chat", {

@@ -14,12 +14,18 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Ensure auth is initialized
+        const authStore = useAuthStore.getState();
+        if (!authStore.isAuthenticated && !authStore.token) {
+          authStore.initialize();
+        }
+        
         const me = await apiClient.get("/users/me").catch(handleApiError);
         if (me?.data) {
-          setCredentials({ token, user: me.data });
+          setCredentials({ token: token || authStore.token, user: me.data });
         }
         const { data } = await apiClient.get("/projects").catch(handleApiError);
-        setProjects(data);
+        setProjects(data || []);
       } catch (error) {
         console.error(error);
       } finally {

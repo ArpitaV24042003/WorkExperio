@@ -4,7 +4,7 @@ from starlette.websockets import WebSocketState
 from datetime import datetime
 import time
 
-from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, ai_team_formation, files
+from .routers import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, ai_team_formation, files, domains
 from .db import create_all_tables
 from .metrics_store import metrics_store
 
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
 	app.include_router(metrics.router, tags=["metrics"])
 	app.include_router(admin.router, prefix="/admin", tags=["admin"])
 	app.include_router(files.router, prefix="/files", tags=["files"])
+	app.include_router(domains.router, prefix="/domains", tags=["domains"])
 
 	# Simple middleware for request metrics (duration)
 	@app.middleware("http")

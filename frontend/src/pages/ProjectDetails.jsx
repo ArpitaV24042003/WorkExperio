@@ -21,6 +21,9 @@ export default function ProjectDetails() {
   const [projectFiles, setProjectFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
+  const [taskCompletion, setTaskCompletion] = useState({}); // {user_id: {completed: bool, progress: number}}
+  const [nextSteps, setNextSteps] = useState([]);
+  const [recentChats, setRecentChats] = useState([]);
 
   useEffect(() => {
     const loadProject = async () => {
@@ -31,11 +34,13 @@ export default function ProjectDetails() {
         authStore.initialize();
       }
       
+      // Wait a bit for auth to initialize
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const token = useAuthStore.getState().token || localStorage.getItem("token");
       if (!token) {
-        setError("Please log in to view this project");
-        setLoading(false);
-        return;
+        // Don't set error immediately - try to load anyway as token might be in request header
+        console.warn("No token found, but attempting to load project anyway");
       }
       
       try {
@@ -43,6 +48,7 @@ export default function ProjectDetails() {
         setError(null);
         const { data } = await apiClient.get(`/projects/${projectId}`, { timeout: 10000 }).catch((err) => {
           if (err.response?.status === 401 || err.response?.status === 403) {
+            // Only set error, don't redirect - let ProtectedRoute handle it
             setError("You don't have access to this project. Please ensure you're logged in and are a team member.");
             setLoading(false);
             return null;
@@ -100,6 +106,16 @@ export default function ProjectDetails() {
         } catch (err) {
           console.error("Failed to load files:", err);
         }
+        
+        // Load recent chat messages for history preview
+        try {
+          const chatData = await apiClient.get(`/chat/projects/${projectId}/messages`, {
+            params: { limit: 5 }
+          }).catch(handleApiError);
+          setRecentChats(chatData || []);
+        } catch (err) {
+          console.error("Failed to load recent chats:", err);
+        }
       } catch (error) {
         console.error(error);
         setError(error.message || "Failed to load project");
@@ -109,6 +125,43 @@ export default function ProjectDetails() {
     };
     loadProject();
   }, [projectId]);
+  
+  // Calculate task completion when data is loaded
+  useEffect(() => {
+    if (teamMembers.length > 0 && projectFiles.length >= 0) {
+      const completion = {};
+      teamMembers.forEach(member => {
+        const memberFiles = projectFiles.filter(f => f.user_id === member.user_id);
+        const memberChats = recentChats.filter(m => m.user_id === member.user_id);
+        const hasFiles = memberFiles.length > 0;
+        const hasActivity = memberChats.length > 0;
+        completion[member.user_id] = {
+          completed: hasFiles && hasActivity,
+          progress: hasFiles ? (hasActivity ? 100 : 50) : (hasActivity ? 25 : 0),
+          filesCount: memberFiles.length,
+          messagesCount: memberChats.length
+        };
+      });
+      setTaskCompletion(completion);
+      
+      // Generate next steps based on project status
+      const steps = [];
+      if (teamMembers.length === 0) {
+        steps.push("Form a team to start collaborating");
+      } else if (projectFiles.length === 0) {
+        steps.push("Upload initial project files or code");
+        steps.push("Set up project structure and dependencies");
+      } else {
+        steps.push("Review uploaded files and provide feedback");
+        steps.push("Continue development on assigned tasks");
+        steps.push("Update team on progress via chat");
+      }
+      if (recentChats.length === 0) {
+        steps.push("Start team communication in chat");
+      }
+      setNextSteps(steps);
+    }
+  }, [teamMembers, projectFiles, recentChats]);
   
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -185,6 +238,100 @@ export default function ProjectDetails() {
           {isTeamLeader && <Badge variant="secondary">Team Leader</Badge>}
         </div>
       </div>
+
+      {/* Project Overview - Task Completion and Next Steps */}
+      {team && teamMembers.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Task Completion Status</CardTitle>
+              <CardDescription>Track progress of team members</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {teamMembers.map((member) => {
+                  const memberInfo = memberDetails[member.user_id] || { name: member.user_id };
+                  const completion = taskCompletion[member.user_id] || { completed: false, progress: 0, filesCount: 0, messagesCount: 0 };
+                  return (
+                    <div key={member.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium text-sm">{memberInfo.name}</p>
+                        <Badge variant={completion.completed ? "success" : "outline"}>
+                          {completion.progress}%
+                        </Badge>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all"
+                          style={{ width: `${completion.progress}%` }}
+                        />
+                      </div>
+                      <div className="flex gap-4 text-xs text-muted-foreground">
+                        <span>{completion.filesCount} files</span>
+                        <span>{completion.messagesCount} messages</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Next Steps</CardTitle>
+              <CardDescription>Recommended actions to move forward</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {nextSteps.length > 0 ? (
+                  nextSteps.map((step, index) => (
+                    <div key={index} className="flex items-start gap-2">
+                      <span className="text-primary font-bold">{index + 1}.</span>
+                      <p className="text-sm">{step}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">All tasks are on track!</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Recent Chat History Preview */}
+      {team && recentChats.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Recent Team Activity</CardTitle>
+                <CardDescription>Latest messages from team chat</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/projects/${project.id}/chat`}>View All</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {recentChats.slice(0, 5).map((chat) => {
+                const senderInfo = memberDetails[chat.user_id] || { name: chat.user_id };
+                return (
+                  <div key={chat.id} className="flex gap-2 text-sm">
+                    <span className="font-medium text-primary">{senderInfo.name}:</span>
+                    <span className="text-muted-foreground">{chat.content.substring(0, 100)}{chat.content.length > 100 ? '...' : ''}</span>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {new Date(chat.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Team Members Display */}
       {team && teamMembers.length > 0 && (

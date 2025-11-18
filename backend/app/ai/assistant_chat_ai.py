@@ -102,6 +102,19 @@ def generate_assistant_response(message: str, project_context: Dict[str, Any], c
 		else:
 			response_parts.append("Could you provide more details about what specifically you'd like me to explain? I can provide a clear, detailed explanation.")
 	
+	elif "evaluate" in lowered or "assessment" in lowered or "review" in lowered or "feedback" in lowered:
+		response_parts.append("I can help evaluate your work! Here's how I assess understanding and performance:\n\n")
+		response_parts.append("**Evaluation Criteria:**\n")
+		response_parts.append("• **Code Quality**: Structure, readability, best practices\n")
+		response_parts.append("• **Problem Solving**: Approach, logic, efficiency\n")
+		response_parts.append("• **Understanding**: Demonstrates grasp of concepts\n")
+		response_parts.append("• **Collaboration**: Communication, teamwork, contributions\n\n")
+		response_parts.append("To get a comprehensive evaluation, please:\n")
+		response_parts.append("1. Share your code or work product\n")
+		response_parts.append("2. Describe what you've implemented\n")
+		response_parts.append("3. Explain any challenges you faced\n\n")
+		response_parts.append("I'll provide detailed feedback on your understanding, code quality, and areas for improvement.")
+	
 	else:
 		# Default contextual response - more conversational
 		if len(conversation_history) > 0:

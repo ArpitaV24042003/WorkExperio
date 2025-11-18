@@ -46,6 +46,8 @@ def get_messages(project_id: str, db: Session = Depends(get_db), limit: int = 10
 		.limit(limit)
 		.all()
 	)
+	# Reverse to show oldest first (for proper chat history display)
+	messages = list(reversed(messages))
 	return [
 		{
 			"id": msg.id,

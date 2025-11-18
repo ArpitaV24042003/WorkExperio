@@ -32,8 +32,10 @@ export default function TeamChat() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load messages
-        const { data } = await apiClient.get(`/chat/projects/${projectId}/messages`).catch(handleApiError);
+        // Load messages (ordered oldest to newest for chat display)
+        const { data } = await apiClient.get(`/chat/projects/${projectId}/messages`, {
+          params: { limit: 100 }
+        }).catch(handleApiError);
         setMessages(data || []);
         
         // Load team members to get names

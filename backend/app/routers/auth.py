@@ -47,10 +47,17 @@ oauth.register(
 @router.post("/signup", response_model=TokenResponse)
 def signup(payload: UserCreate, db: Session = Depends(get_db)):
 	try:
-		# Check if email already exists
+		# Check if email already exists - if so, return existing user's token (retain history)
 		existing_user = db.query(User).filter(User.email == payload.email).first()
 		if existing_user:
-			raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+			# User exists - update name if provided and return existing token
+			if payload.name and existing_user.name != payload.name:
+				existing_user.name = payload.name
+				db.commit()
+				db.refresh(existing_user)
+			# Generate new token for existing user (they're logging back in)
+			token = create_access_token(existing_user.id)
+			return TokenResponse(access_token=token)
 
 		# Hash password
 		password_hash = hash_password(payload.password)
