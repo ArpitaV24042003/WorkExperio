@@ -16,6 +16,7 @@ import AiAssistant from "./pages/AiAssistant";
 import PerformanceReport from "./pages/PerformanceReport";
 import Settings from "./pages/Settings";
 import { ShellLayout } from "./components/ShellLayout";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, initialize, token } = useAuthStore();

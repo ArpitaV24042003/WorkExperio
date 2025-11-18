@@ -24,6 +24,7 @@ export default function CreateProject() {
   const [domain, setDomain] = useState(""); // Project domain (e.g., "Web Development", "Data Science")
   const [problemStatement, setProblemStatement] = useState(""); // Clarified problem statement
   const [memberRoles, setMemberRoles] = useState({}); // {user_id: role}
+  const [suggestedRoles, setSuggestedRoles] = useState([]); // AI-suggested roles based on domain
   const [assignedTasks, setAssignedTasks] = useState({}); // {user_id: task}
   const [form, setForm] = useState({ title: "", description: "", ai_generated: false, team_type: "none" });
   const [aiIdea, setAiIdea] = useState(null);
