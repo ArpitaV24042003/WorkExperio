@@ -256,13 +256,12 @@ async def auto_create_project_with_team(
 		db.add(team)
 		db.flush()
 		
-		# Add creator as solo member for now
-		# Add creator to team - only assign role for solo projects
-	if creator_role:
-		db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=creator_role))
-	else:
-		# No role assigned - member will select their own role
-		db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=None))
+		# Add creator as solo member for now - only assign role for solo projects
+		if creator_role:
+			db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=creator_role))
+		else:
+			# No role assigned - member will select their own role
+			db.add(TeamMember(team_id=team.id, user_id=current_user.id, role=None))
 		
 		project.team_id = team.id
 		db.commit()
