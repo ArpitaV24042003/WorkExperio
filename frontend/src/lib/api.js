@@ -1,8 +1,24 @@
 import axios from "axios";
 import { useAuthStore } from "../store/auth";
 
+// Determine API URL: use env var, or detect Render deployment, or fallback to localhost
+const getApiUrl = () => {
+  // If explicitly set in env, use it
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // If we're on Render frontend, use Render backend
+  if (window.location.hostname.includes("onrender.com")) {
+    return "https://workexperio-backend.onrender.com";
+  }
+  
+  // Default to localhost for local development
+  return "http://localhost:8000";
+};
+
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8000",
+  baseURL: getApiUrl(),
   timeout: 30000, // 30 seconds timeout
   headers: {
     "Content-Type": "application/json",
@@ -57,6 +73,19 @@ apiClient.interceptors.response.use(
 );
 
 export const handleApiError = (error) => {
+  // Handle network errors (no response from server)
+  if (!error.response) {
+    if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+      return Promise.reject(new Error("Request timed out. Please check your connection and try again."));
+    }
+    if (error.message === "Network Error" || error.code === "ERR_NETWORK") {
+      const apiUrl = getApiUrl();
+      return Promise.reject(new Error(`Cannot connect to server. Please ensure the backend is running at ${apiUrl}`));
+    }
+    return Promise.reject(new Error("Network error. Please check your internet connection and try again."));
+  }
+  
+  // Handle HTTP errors (server responded with error status)
   const message = error?.response?.data?.detail || error.message || "Something went wrong";
   return Promise.reject(new Error(message));
 };

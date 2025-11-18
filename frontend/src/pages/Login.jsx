@@ -39,8 +39,23 @@ export default function Login() {
       
       navigate("/dashboard");
     } catch (err) {
-      const errorMessage = err?.response?.data?.detail || err.message || "Login failed. Please try again.";
+      // Better error handling for network issues
+      let errorMessage = "Login failed. Please try again.";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err?.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err?.response?.status === 401) {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else if (err?.response?.status >= 500) {
+        errorMessage = "Server error. Please try again in a moment.";
+      } else if (!err?.response) {
+        errorMessage = "Cannot connect to server. Please check your connection.";
+      }
+      
       setError(errorMessage);
+      console.error("Login error:", err);
     } finally {
       setLoading(false);
     }

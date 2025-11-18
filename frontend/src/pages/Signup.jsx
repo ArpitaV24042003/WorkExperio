@@ -39,8 +39,25 @@ export default function Signup() {
       
       navigate("/profile-setup");
     } catch (err) {
-      const errorMessage = err?.response?.data?.detail || err.message || "Signup failed. Please try again.";
+      // Better error handling for network issues
+      let errorMessage = "Signup failed. Please try again.";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err?.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err?.response?.status === 400 || err?.response?.status === 422) {
+        errorMessage = "Invalid input. Please check your information and try again.";
+      } else if (err?.response?.status === 409) {
+        errorMessage = "An account with this email already exists. Please sign in instead.";
+      } else if (err?.response?.status >= 500) {
+        errorMessage = "Server error. Please try again in a moment.";
+      } else if (!err?.response) {
+        errorMessage = "Cannot connect to server. Please check your connection.";
+      }
+      
       setError(errorMessage);
+      console.error("Signup error:", err);
     } finally {
       setLoading(false);
     }
