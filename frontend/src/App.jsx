@@ -21,6 +21,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 const ProtectedRoute = ({ children }) => {
   const { initialize, token } = useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   
   // Initialize auth state on mount (for page refresh)
   useEffect(() => {
@@ -29,20 +30,21 @@ const ProtectedRoute = ({ children }) => {
     
     // Check token in localStorage directly (more reliable)
     const storedToken = localStorage.getItem("token");
-    if (storedToken) {
-      // Token exists, ensure store is updated
-      if (!token) {
-        initialize();
-      }
+    const hasValidToken = storedToken && storedToken.trim().length > 0;
+    
+    // Update store if token exists but not in store
+    if (hasValidToken && !token) {
+      initialize();
     }
     
-    // Small delay to ensure state is synced
-    setTimeout(() => {
-      setIsChecking(false);
-    }, 50);
+    // Set authenticated state immediately
+    setIsAuthenticated(hasValidToken || Boolean(token));
+    
+    // Mark checking as complete
+    setIsChecking(false);
   }, [initialize, token]);
   
-  // Show loading while checking auth
+  // Show loading while checking auth (only briefly)
   if (isChecking) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -51,9 +53,9 @@ const ProtectedRoute = ({ children }) => {
     );
   }
   
-  // Check if authenticated - check both store and localStorage
+  // Check if authenticated - prioritize localStorage check
   const storedToken = localStorage.getItem("token");
-  const hasAuth = storedToken || token;
+  const hasAuth = (storedToken && storedToken.trim().length > 0) || (token && token.trim().length > 0);
   
   if (!hasAuth) {
     return <Navigate to="/login" replace />;

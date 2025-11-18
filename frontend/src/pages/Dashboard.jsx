@@ -16,18 +16,23 @@ export default function Dashboard() {
       try {
         // Ensure auth is initialized
         const authStore = useAuthStore.getState();
-        if (!authStore.isAuthenticated && !authStore.token) {
+        authStore.initialize();
+        
+        // Ensure token is in store
+        const storedToken = localStorage.getItem("token");
+        if (storedToken && !authStore.token) {
           authStore.initialize();
         }
         
         const me = await apiClient.get("/users/me").catch(handleApiError);
         if (me?.data) {
-          setCredentials({ token: token || authStore.token, user: me.data });
+          setCredentials({ token: token || authStore.token || storedToken, user: me.data });
         }
         const { data } = await apiClient.get("/projects").catch(handleApiError);
         setProjects(data || []);
       } catch (error) {
         console.error(error);
+        // Don't set error state - let ProtectedRoute handle auth failures
       } finally {
         setLoading(false);
       }

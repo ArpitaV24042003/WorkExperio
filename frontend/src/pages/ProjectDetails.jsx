@@ -36,14 +36,11 @@ export default function ProjectDetails() {
       
       // Check token in localStorage directly
       const storedToken = localStorage.getItem("token");
-      if (!storedToken && !authStore.token) {
+      if (!storedToken || storedToken.trim().length === 0) {
         // No token at all - ProtectedRoute will handle redirect
         setLoading(false);
         return;
       }
-      
-      // Wait a bit for auth to initialize
-      await new Promise(resolve => setTimeout(resolve, 150));
       
       try {
         setLoading(true);
@@ -51,6 +48,7 @@ export default function ProjectDetails() {
         const { data } = await apiClient.get(`/projects/${projectId}`, { timeout: 10000 }).catch((err) => {
           if (err.response?.status === 401 || err.response?.status === 403) {
             // Only set error, don't redirect - ProtectedRoute will handle navigation
+            // This might be a permission issue, not an auth issue
             setError("You don't have access to this project. Please ensure you're logged in and are a team member.");
             setLoading(false);
             return null;

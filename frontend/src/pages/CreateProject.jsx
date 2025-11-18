@@ -518,7 +518,7 @@ export default function CreateProject() {
           setError("Project created but team assignment failed. You can assign team members later.");
         }
       }
-      // Ensure auth state is updated and persisted before navigation
+      // Ensure auth state is persisted before navigation
       const authStore = useAuthStore.getState();
       if (authStore.token) {
         // Ensure token is in localStorage
@@ -527,10 +527,10 @@ export default function CreateProject() {
           localStorage.setItem("user", JSON.stringify(authStore.user));
         }
       }
-      // Small delay to ensure state is persisted, then navigate
-      setTimeout(() => {
-        navigate(`/projects/${data.id}`, { replace: true });
-      }, 200);
+      
+      // Navigate immediately to project details - ProtectedRoute will handle auth
+      // Use replace: true to prevent back navigation to create page
+      navigate(`/projects/${data.id}`, { replace: true });
     } catch (err) {
       const errorMessage = err?.response?.data?.detail || err.message || "Failed to create project. Please try again.";
       setError(errorMessage);
