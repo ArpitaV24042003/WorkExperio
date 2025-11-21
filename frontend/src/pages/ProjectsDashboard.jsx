@@ -51,6 +51,7 @@ export default function ProjectsDashboard() {
 
   const [project, setProject] = useState(null);
   const [members, setMembers] = useState([]);
+  const [memberDetails, setMemberDetails] = useState({}); // user_id -> { name, email }
   const [analytics, setAnalytics] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [files, setFiles] = useState([]);
@@ -77,6 +78,7 @@ export default function ProjectsDashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [aiAssigning, setAiAssigning] = useState(false);
   const [aiPlan, setAiPlan] = useState(null);
+  const [suggestedRoles, setSuggestedRoles] = useState([]);
   const [activePanel, setActivePanel] = useState(null); // "team" | "tasks" | "files" | "analytics" | "ai" | null
 
   const isOwner = project && user?.id && project.owner_id === user.id;
@@ -126,6 +128,51 @@ export default function ProjectsDashboard() {
       loadAll();
     }
   }, [projectId]);
+
+  // Load friendly display names for members so we don't show raw UUIDs in UI.
+  useEffect(() => {
+    const loadMemberDetails = async () => {
+      if (!members.length) return;
+
+      const current = { ...memberDetails };
+      const missing = members
+        .map((m) => m.user_id)
+        .filter((id) => id && !current[id]);
+      if (!missing.length) return;
+
+      try {
+        const updates = {};
+        for (const id of missing) {
+          try {
+            const res = await apiClient
+              .get(`/users/${id}/profile`)
+              .catch(() => null);
+            if (res?.data) {
+              updates[id] = {
+                name: res.data.name || id,
+                email: res.data.email || "",
+              };
+            } else {
+              updates[id] = { name: id, email: "" };
+            }
+          } catch {
+            updates[id] = { name: id, email: "" };
+          }
+        }
+        setMemberDetails((prev) => ({ ...prev, ...updates }));
+      } catch (err) {
+        console.error("Failed to load member details:", err);
+      }
+    };
+
+    loadMemberDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members]);
+
+  const getMemberName = (userId) => {
+    if (!userId) return "";
+    return memberDetails[userId]?.name || userId.slice(0, 8);
+  };
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
@@ -305,6 +352,39 @@ export default function ProjectsDashboard() {
     }
   };
 
+  const handleSuggestRoles = async () => {
+    if (!projectId) return;
+    try {
+      const { data } = await apiClient
+        .post(`/teams/projects/${projectId}/suggest-roles`)
+        .catch(handleApiError);
+      const roles = data?.suggested_roles || [];
+      setSuggestedRoles(roles);
+
+      // Auto-assign suggested roles to members (zip by index)
+      if (roles.length && members.length) {
+        await Promise.all(
+          members.map((m, idx) => {
+            const role = roles[idx % roles.length];
+            return apiClient
+              .patch(`/projects/${projectId}/members/${m.user_id}/role`, {
+                role,
+              })
+              .catch(handleApiError);
+          })
+        );
+        // Refresh members list
+        const refreshed = await apiClient
+          .get(`/projects/${projectId}/members`)
+          .catch(handleApiError);
+        setMembers(refreshed?.data?.members || []);
+      }
+    } catch (err) {
+      console.error("Suggest roles error:", err);
+      alert(err.message || "Failed to suggest roles.");
+    }
+  };
+
   const handleRunAiAssign = async () => {
     if (!projectId) return;
     setAiAssigning(true);
@@ -352,7 +432,7 @@ export default function ProjectsDashboard() {
 
   const memberHoursData =
     analytics?.members?.map((m) => ({
-      label: m.user_id.slice(0, 6),
+      label: getMemberName(m.user_id) || m.user_id.slice(0, 6),
       value: m.total_hours,
     })) || [];
 
@@ -374,7 +454,7 @@ export default function ProjectsDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline">Owner: {project.owner_id}</Badge>
+          <Badge variant="outline">Owner: {getMemberName(project.owner_id)}</Badge>
           <Badge variant="outline">Team: {project.team_type}</Badge>
           {isOwner && (
             <Button variant="destructive" size="sm" onClick={handleDeleteProject}>
@@ -481,9 +561,16 @@ export default function ProjectsDashboard() {
                 Manage roles and invite known members using their User ID.
               </CardDescription>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
-              Close
-            </Button>
+            <div className="flex gap-2">
+              {isOwner && (
+                <Button size="sm" variant="outline" onClick={handleSuggestRoles}>
+                  AI Suggest Roles
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
+                Close
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {isOwner && (
@@ -518,7 +605,7 @@ export default function ProjectsDashboard() {
                     className="space-y-1 rounded-md border p-2 text-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{m.user_id}</span>
+                      <span className="font-medium">{getMemberName(m.user_id)}</span>
                       {project.owner_id === m.user_id && (
                         <Badge variant="secondary">Owner</Badge>
                       )}
@@ -526,14 +613,29 @@ export default function ProjectsDashboard() {
                     <div className="flex items-center gap-1">
                       <span className="text-xs text-muted-foreground">Role:</span>
                       {user?.id === m.user_id || isOwner ? (
-                        <Input
-                          className="h-7 text-xs"
-                          defaultValue={m.role || ""}
-                          placeholder="Set role"
-                          onBlur={(e) =>
-                            handleChangeRole(m.user_id, e.target.value || "")
-                          }
-                        />
+                        suggestedRoles.length ? (
+                          <select
+                            className="h-7 text-xs rounded border bg-background px-1"
+                            value={m.role || ""}
+                            onChange={(e) => handleChangeRole(m.user_id, e.target.value || "")}
+                          >
+                            <option value="">Select role</option>
+                            {suggestedRoles.map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            className="h-7 text-xs"
+                            defaultValue={m.role || ""}
+                            placeholder="Set role"
+                            onBlur={(e) =>
+                              handleChangeRole(m.user_id, e.target.value || "")
+                            }
+                          />
+                        )
                       ) : (
                         <span className="text-xs">
                           {m.role || (
@@ -714,7 +816,7 @@ export default function ProjectsDashboard() {
                       )}
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         {t.assignee_id && (
-                          <span>Assigned: {t.assignee_id.slice(0, 8)}...</span>
+                          <span>Assigned: {getMemberName(t.assignee_id)}</span>
                         )}
                         {t.estimated_hours != null && (
                           <span>Est: {t.estimated_hours}h</span>
@@ -767,7 +869,7 @@ export default function ProjectsDashboard() {
                   {aiPlan.assignments.map((a) => (
                     <li key={a.task_id}>
                       <span className="font-semibold">{a.task_title}</span> →{" "}
-                      <span>{a.assignee_id.slice(0, 8)}...</span>{" "}
+                        <span>{getMemberName(a.assignee_id)}</span>{" "}
                       <span className="text-muted-foreground">
                         (score {a.assignee_score.toFixed(1)}, eta {a.estimated_hours.toFixed(1)}h)
                       </span>
