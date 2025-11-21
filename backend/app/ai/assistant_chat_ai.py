@@ -10,13 +10,16 @@ FAQ_RESPONSES = {
 }
 
 
-def generate_assistant_response(message: str, project_context: Dict[str, Any], conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+def generate_assistant_response(
+	message: str,
+	project_context: Dict[str, Any],
+	conversation_history: List[Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
 	"""
-	Generate AI assistant response with conversation context.
+	Generate a deterministic, context-aware assistant response.
 
-	This is a deterministic, LLM-style helper that tries to behave closer to ChatGPT:
-	- Reads basic project context (title, description, tasks, team, files)
-	- Produces multi-paragraph, concrete guidance instead of short bullet placeholders
+	This does not call an external LLM, but it tries to mimic a helpful ChatGPT-style
+	reply using project metadata (title, description, tasks, team, files).
 	"""
 	conversation_history = conversation_history or []
 	lowered = message.lower().strip()
@@ -30,11 +33,6 @@ def generate_assistant_response(message: str, project_context: Dict[str, Any], c
 	# Build context summary strings
 	open_tasks = [t for t in tasks if t.get("status") != "done"]
 	done_tasks = [t for t in tasks if t.get("status") == "done"]
-	assignee_map = {t.get("assignee_id"): [] for t in tasks if t.get("assignee_id")}
-	for t in tasks:
-		if t.get("assignee_id"):
-			assignee_map.setdefault(t["assignee_id"], []).append(t)
-
 	team_roles = {m.get("user_id"): m.get("role") for m in team_members}
 	file_names = [f.get("filename") for f in files][:5]
 
@@ -43,64 +41,50 @@ def generate_assistant_response(message: str, project_context: Dict[str, Any], c
 	# If this is a follow-up question, reference previous context
 	user_messages = [msg for msg in conversation_history if msg.get("role") == "user"]
 	if len(user_messages) > 1 and any(
-		word in lowered for word in ["that", "it", "this", "above", "previous", "earlier", "what about", "and"]
+		word in lowered
+		for word in ["that", "it", "this", "above", "previous", "earlier", "what about", "and"]
 	):
-		response_parts.append("Picking up from your earlier question, I'll build on that context and go deeper.\n\n")
+		response_parts.append(
+			"Picking up from your earlier question, I'll build on that context and go deeper.\n\n"
+		)
 
-	# Dedicated branches for different intents
+	# Intent branches
 	if any(word in lowered for word in ["bug", "error", "exception", "not working", "crash", "stack trace"]):
 		response_parts.append(
-			f"Let's debug this step by step in the context of **{project_title}**. "
-			"Here's a practical workflow you can follow:\n\n"
+			f"Let's debug this step by step in the context of **{project_title}**.\n\n"
 		)
 		response_parts.append(
-			"1) **Reproduce the issue precisely** – write down the exact steps (URL, inputs, clicks) that lead to the error. "
-			"If it's backend related, capture the request payload and any logs or stack traces.\n\n"
+			"1) **Reproduce the issue precisely** – capture the exact route, payload, and user actions.\n"
+			"2) **Narrow down the failing area** – is it a React component, an API call, or a FastAPI route?\n"
+			"3) **Add temporary logging** around the suspected lines to see what values you actually get.\n"
+			"4) **Create a minimal test case** that focuses only on the broken behaviour.\n\n"
 		)
 		response_parts.append(
-			"2) **Narrow down the failing area** – is it a React component (state/props), an API call (HTTP 4xx/5xx), or a FastAPI route (validation/db error)? "
-			"Add temporary logging around the suspected functions and check which line fails.\n\n"
-		)
-		response_parts.append(
-			"3) **Create a minimal test case** – if possible, isolate the logic into a small function or endpoint and write a focused unit test that reproduces the bug. "
-			"This makes it much easier to reason about and fix.\n\n"
-		)
-		response_parts.append(
-			"4) **Propose a concrete fix** – if you paste the specific error message and the related code snippet, I can walk through it line by line and suggest an exact patch "
-			"(including updated React code or FastAPI handler) rather than a generic explanation.\n\n"
-		)
-		response_parts.append(
-			"Send me the failing code block and the error output next, and I’ll draft a corrected version with explanations."
+			"Paste the specific error message and the related code (component or route), and I can propose an exact patch."
 		)
 	elif any(word in lowered for word in ["plan", "roadmap", "milestone", "architecture"]):
 		response_parts.append(
 			f"For **{project_title}**, we can design a clear, actionable plan instead of loose ideas.\n\n"
 		)
 		response_parts.append(
-			"**High-level structure:** you already have a React + FastAPI stack, so we can think in terms of frontend features, backend APIs, and data model evolution. "
-			"We'll break work into small, shippable slices that can be completed in a few hours each.\n\n"
+			"Start by grouping work into slices: authentication & persistence, core CRUD and dashboards, "
+			"analytics & charts, and finally AI assistance and polishing. "
 		)
 		if open_tasks:
 			response_parts.append(
-				f"Currently there are {len(open_tasks)} open tasks and {len(done_tasks)} completed. "
-				"Start by grouping open tasks into milestones (e.g., authentication, dashboards, analytics, AI assistant) and order them by dependency.\n\n"
+				f"There are currently {len(open_tasks)} open tasks and {len(done_tasks)} completed. "
+				"Use those as your initial backlog and assign them to milestones in order of dependency.\n\n"
 			)
 		else:
 			response_parts.append(
-				"Right now I don't see structured tasks in the context, so we should first define a backlog: authentication, core CRUD, dashboards, "
-				"analytics, team features, and AI assistance.\n\n"
+				"Right now I don't see structured tasks in the context, so we should first define a backlog from your requirements.\n\n"
 			)
 		response_parts.append(
-			"Next, we can derive a 1–2 week roadmap: "
-			"Day 1–2 for tightening auth & persistence, Day 3–4 for project/Task flows, Day 5–6 for analytics and basic charts, Day 7+ for polishing AI interactions. "
-			"If you describe your current progress in more detail, I can turn this into a concrete task list with suggested implementation steps."
+			"If you describe your current progress in more detail, I can turn it into a concrete checklist with suggested implementation order."
 		)
 	elif any(word in lowered for word in ["code", "implement", "example", "snippet", "function", "component"]):
 		response_parts.append(
-			"I can absolutely help you with concrete code. Below is a generic pattern you can adapt, and if you paste your existing code I can refactor it specifically.\n\n"
-		)
-		response_parts.append(
-			"**Example: React fetch hook pattern** (using async/await and error handling):\n\n"
+			"I can help you with concrete code. Here's a generic React data-loading pattern you can adapt:\n\n"
 		)
 		response_parts.append(
 			"```jsx\n"
@@ -125,14 +109,16 @@ def generate_assistant_response(message: str, project_context: Dict[str, Any], c
 			"      }\n"
 			"    }\n"
 			"    load();\n"
-			"    return () => { cancelled = true; };\n"
+			"    return () => {\n"
+			"      cancelled = true;\n"
+			"    };\n"
 			"  }, [projectId]);\n\n"
 			"  return { data, loading, error };\n"
 			"}\n"
 			"```\n\n"
 		)
 		response_parts.append(
-			"If you share the specific React component or FastAPI route you’re working on, I can rewrite it in this style and explain every change."
+			"Share the specific component or endpoint you're working on and I can refactor it in this style, explaining each step."
 		)
 	else:
 		# Default contextual response – summarize context and invite a focused question
@@ -147,44 +133,45 @@ def generate_assistant_response(message: str, project_context: Dict[str, Any], c
 			response_parts.append(
 				f"There are currently {len(tasks)} tasks in the project "
 				f"({len(done_tasks)} completed, {len(open_tasks)} still open). "
-				"Open tasks include: "
+				"Some open tasks include:\n"
 			)
 			for t in open_tasks[:3]:
-				title = t.get(\"title\") or \"(untitled)\"
-				status = t.get(\"status\") or \"todo\"
-				response_parts.append(f\"- {title} [{status}]\\n\")
-			response_parts.append(\"\\n\")
+				title = t.get("title") or "(untitled)"
+				status = t.get("status") or "todo"
+				response_parts.append(f"- {title} [{status}]\n")
+			response_parts.append("\n")
 
 		if team_members:
+			roles_list = sorted(set(r for r in team_roles.values() if r))
+			roles_text = ", ".join(roles_list) if roles_list else "not yet defined"
 			response_parts.append(
-				f\"Your team has {len(team_members)} member(s). Roles I see: \" +
-				\", \".join(sorted(set(r for r in team_roles.values() if r))) +
-				\".\\n\\n\"
+				f"Your team has {len(team_members)} member(s). Roles I see: {roles_text}.\n\n"
 			)
 
 		if file_names:
 			response_parts.append(
-				\"Some recent files attached to this project are: \" +
-				\", \".join(file_names) +
-				\".\\n\\n\"
+				"Some recent files attached to this project are: "
+				+ ", ".join(file_names)
+				+ ".\n\n"
 			)
 
 		response_parts.append(
-			\"Tell me what you want to focus on right now – for example, I can help you refactor a specific component, design a database model, \"\n"
-			\"or break your remaining tasks into smaller, more manageable steps.\\n\"
+			"Tell me what you want to focus on right now – for example, I can help you refactor a specific component, "
+			"design a database model, or break your remaining tasks into smaller, more manageable steps.\n"
 		)
 
-	response = \"\".join(response_parts)
+	response = "".join(response_parts)
 
 	# Ensure the reply is reasonably detailed, not a 1–2 word answer
 	if len(response.split()) < 60:
 		response += (
-			\"\\n\\nTo go deeper, paste the relevant piece of code, the exact error message, or the task you're trying to complete. \"\n"
-			\"I can then propose a concrete implementation plan and example snippets tailored to your current stack.\"
+			"\n\nTo go deeper, paste the relevant piece of code, the exact error message, "
+			"or the task you're trying to complete. I can then propose a concrete implementation "
+			"plan and example snippets tailored to your current stack."
 		)
 
 	return {
-		\"response\": response,
-		\"suggestions\": project_context.get(\"suggested_tasks\", []),
+		"response": response,
+		"suggestions": project_context.get("suggested_tasks", []),
 	}
 
