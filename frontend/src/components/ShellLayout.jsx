@@ -58,9 +58,6 @@ export function ShellLayout() {
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleSignOut}>
-            Logout
-          </Button>
         </div>
       </aside>
       <div className="flex flex-1 flex-col">
@@ -89,7 +86,11 @@ export function ShellLayout() {
                 </p>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
+            <Button
+              size="sm"
+              onClick={handleSignOut}
+              className="bg-black text-black hover:bg-black/90 border border-black"
+            >
               Logout
             </Button>
           </div>
