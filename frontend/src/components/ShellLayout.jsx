@@ -76,24 +76,24 @@ export function ShellLayout() {
               {onProjectsRoute ? "Project Workspace" : "WorkExperio"}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-2">
-              <Avatar name={user?.name} />
-              <div className="text-right">
-                <p className="text-sm font-medium">{user?.name ?? "Member"}</p>
-                <p className="text-xs text-muted-foreground max-w-[180px] truncate">
-                  {user?.email}
-                </p>
-              </div>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2">
+            <Avatar name={user?.name} />
+            <div className="text-right">
+              <p className="text-sm font-medium">{user?.name ?? "Member"}</p>
+              <p className="text-xs text-muted-foreground max-w-[180px] truncate">
+                {user?.email}
+              </p>
             </div>
-            <Button
-              size="sm"
-              onClick={handleSignOut}
-              className="bg-black text-black hover:bg-black/90 border border-black"
-            >
-              Logout
-            </Button>
           </div>
+          <Button
+            size="sm"
+            onClick={handleSignOut}
+            className="bg-purple-600 text-white hover:bg-purple-700"
+          >
+            Logout
+          </Button>
+        </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <Outlet />
