@@ -96,6 +96,110 @@ def _get_or_create_contribution(db: Session, project_id: str, user_id: str) -> P
 	return contrib
 
 
+def _estimate_code_quality(text: str) -> float:
+	"""
+	Very lightweight static "code quality" heuristic.
+
+	- Uses line count and rough complexity indicators (indentation and symbols)
+	  to produce a 0–100 score.
+	- Shorter, well-structured code with reasonable indentation scores higher.
+	"""
+	if not text:
+		return 50.0
+
+	lines = [ln for ln in text.splitlines() if ln.strip()]
+	line_count = len(lines)
+
+	# Count some simple complexity hints: nesting and branches
+	complex_tokens = [" if ", " for ", " while ", " try", " except", " catch", " case ", "switch", "&&", "||"]
+	complexity_hits = 0
+	for ln in lines:
+		l = ln.strip().lower()
+		for tok in complex_tokens:
+			if tok in l:
+				complexity_hits += 1
+
+	avg_len = sum(len(ln) for ln in lines) / max(1, len(lines))
+	indent_chars = sum(len(ln) - len(ln.lstrip()) for ln in lines)
+	avg_indent = indent_chars / max(1, len(lines))
+
+	# Start from 100 and subtract penalties
+	score = 100.0
+
+	# Penalize extremely long files (rough proxy for complexity)
+	score -= min(40.0, max(0.0, (line_count - 80) * 0.3))
+
+	# Penalize excessive complexity tokens
+	score -= min(30.0, complexity_hits * 1.5)
+
+	# Penalize extremely long average line length (low readability)
+	if avg_len > 100:
+		score -= min(20.0, (avg_len - 100) * 0.2)
+
+	# Small bonus for some indentation (suggests structure)
+	if 1.0 <= avg_indent <= 8.0:
+		score += 5.0
+
+	return float(max(0.0, min(100.0, score)))
+
+
+def _refresh_project_code_quality_from_files(db: Session, project: Project) -> None:
+	"""
+	Recompute per-user code_quality_score based on uploaded project files.
+
+	For each ProjectFile marked as code (by file_type == 'code' or by extension),
+	we read the file contents (best-effort), compute a heuristic quality score,
+	and then average scores per user. The result is stored in ProjectContribution.code_quality_score.
+	"""
+	from pathlib import Path
+
+	# Gather all files for the project
+	files: List[ProjectFile] = (
+		db.query(ProjectFile)
+		.filter(ProjectFile.project_id == project.id)
+		.all()
+	)
+	if not files:
+		return
+
+	code_exts = {".py", ".js", ".jsx", ".ts", ".tsx", ".ts", ".tsx", ".java", ".cs", ".cpp", ".c", ".go"}
+	scores_by_user: Dict[str, List[float]] = defaultdict(list)
+
+	for f in files:
+		# Only consider code-like files (either explicitly marked or by extension)
+		is_code_type = (f.file_type or "").lower() == "code"
+		is_code_ext = Path(f.filename).suffix.lower() in code_exts
+		if not (is_code_type or is_code_ext):
+			continue
+
+		if not f.file_path:
+			continue
+
+		try:
+			path = Path(f.file_path)
+			if not path.is_file():
+				continue
+			text = path.read_text(encoding="utf-8", errors="ignore")
+		except Exception:
+			# If we can't read it as text, skip
+			continue
+
+		score = _estimate_code_quality(text)
+		if f.user_id:
+			scores_by_user[f.user_id].append(score)
+
+	# Apply averaged scores into ProjectContribution per user
+	for user_id, scores in scores_by_user.items():
+		if not scores:
+			continue
+		avg_score = float(sum(scores) / len(scores))
+		contrib = _get_or_create_contribution(db, project.id, user_id)
+		contrib.code_quality_score = avg_score
+
+	# Persist updates
+	db.flush()
+
+
 def _compute_member_skill_vector(db: Session, user_id: str) -> List[str]:
 	"""
 	Simple capability vector for a member derived from Skill rows.
@@ -317,6 +421,10 @@ def project_analytics_overview(
 	project = _get_project_or_404(db, project_id)
 	_ensure_project_access(project, current_user, db)
 
+	# Ensure code quality metrics reflect the latest uploaded code files.
+	# This pass is lightweight (line/complexity-based) and runs per request.
+	_refresh_project_code_quality_from_files(db, project)
+
 	# Task level metrics
 	tasks = db.query(Task).filter(Task.project_id == project.id).all()
 	total_tasks = len(tasks)
@@ -390,6 +498,13 @@ def project_analytics_overview(
 	total_messages = 0
 	total_ai_interactions = 0
 
+	# Resolve user names for display
+	user_ids = list(contrib_by_user.keys())
+	user_name_map: Dict[str, str] = {}
+	if user_ids:
+		for uid, name in db.query(User.id, User.name).filter(User.id.in_(user_ids)).all():
+			user_name_map[uid] = name
+
 	# Participation normalization baseline so scores end up roughly in 0–100
 	max_messages = max(messages_per_user.values()) if messages_per_user else 0
 	max_files = max(files_per_user.values()) if files_per_user else 0
@@ -456,6 +571,7 @@ def project_analytics_overview(
 				files_uploaded=files_uploaded,
 				messages_sent=messages_sent,
 				ai_interactions=ai_interactions,
+				user_name=user_name_map.get(user_id),
 			)
 		)
 
@@ -772,6 +888,14 @@ def get_project_members(
 
 	team = db.query(Team).filter(Team.id == project.team_id).first()
 	members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+
+	# Preload user details so UI can display names instead of raw IDs
+	user_ids = [m.user_id for m in members]
+	user_map: Dict[str, Dict[str, Any]] = {}
+	if user_ids:
+		for u in db.query(User.id, User.name, User.email).filter(User.id.in_(user_ids)).all():
+			user_map[u.id] = {"name": u.name, "email": u.email}
+
 	return {
 		"project_id": project_id,
 		"team_id": team.id,
@@ -782,6 +906,8 @@ def get_project_members(
 				"role": m.role,
 				"task": m.task,
 				"joined_at": m.joined_at,
+				"name": user_map.get(m.user_id, {}).get("name"),
+				"email": user_map.get(m.user_id, {}).get("email"),
 			}
 			for m in members
 		],
