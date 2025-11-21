@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
 import { Button } from "./ui/button";
 import { Avatar } from "./ui/avatar";
@@ -13,12 +13,15 @@ const navItems = [
 
 export function ShellLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuthStore();
 
   const handleSignOut = () => {
     logout();
     navigate("/login");
   };
+
+  const onProjectsRoute = location.pathname.startsWith("/projects");
 
   return (
     <div className="flex min-h-screen bg-muted/20">
@@ -61,11 +64,35 @@ export function ShellLayout() {
         </div>
       </aside>
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-background px-4 py-3 shadow-sm md:hidden">
-          <p className="text-lg font-semibold">WorkExperio</p>
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            Logout
-          </Button>
+        <header className="flex items-center justify-between border-b bg-background px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            {onProjectsRoute && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/projects")}
+              >
+                ← Back to Projects
+              </Button>
+            )}
+            <p className="text-lg font-semibold">
+              {onProjectsRoute ? "Project Workspace" : "WorkExperio"}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-2">
+              <Avatar name={user?.name} />
+              <div className="text-right">
+                <p className="text-sm font-medium">{user?.name ?? "Member"}</p>
+                <p className="text-xs text-muted-foreground max-w-[180px] truncate">
+                  {user?.email}
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleSignOut}>
+              Logout
+            </Button>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <Outlet />
