@@ -2,7 +2,14 @@ import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
 import { apiClient, handleApiError } from "../lib/api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 
@@ -23,20 +30,23 @@ export default function AiAssistant() {
     scrollToBottom();
   }, [chatLog]);
 
-  // Load conversation history on mount
+  // Load project-scoped conversation history on mount
   useEffect(() => {
     const loadHistory = async () => {
-      if (!user?.id) return;
-      
+      if (!user?.id || !projectId) {
+        setLoadingHistory(false);
+        return;
+      }
       try {
-        const params = projectId ? { project_id: projectId } : {};
-        const { data } = await apiClient.get("/ai/assistant-conversation", { params }).catch(handleApiError);
-        
+        const { data } = await apiClient
+          .get(`/projects/${projectId}/ai/history`)
+          .catch(handleApiError);
         if (data && data.length > 0) {
           const history = data.map((conv) => ({
             role: conv.role,
             content: conv.content,
             id: conv.id,
+            created_at: conv.created_at,
           }));
           setChatLog(history);
         }
@@ -46,42 +56,52 @@ export default function AiAssistant() {
         setLoadingHistory(false);
       }
     };
-    
+
     loadHistory();
   }, [projectId, user?.id]);
 
   const sendMessage = async (event) => {
     event.preventDefault();
-    if (!message.trim() || loading) return;
-    
+    if (!message.trim() || loading || !projectId) return;
+
     const userMessage = message.trim();
     setMessage("");
-    
+
     // Add user message to chat log immediately
-    const newUserMessage = { role: "user", content: userMessage };
+    const newUserMessage = {
+      role: "user",
+      content: userMessage,
+      id: `local-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
     setChatLog((prev) => [...prev, newUserMessage]);
     setLoading(true);
-    
+
     try {
-      // Send conversation history for context
-      const conversationHistory = chatLog.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-      
       const { data } = await apiClient
-        .post("/ai/assistant-chat", {
-          project_id: projectId || null,
-          user_id: user?.id,
+        .post(`/projects/${projectId}/ai/chat`, {
           message: userMessage,
-          conversation_history: conversationHistory,
         })
         .catch(handleApiError);
-      
-      setChatLog((prev) => [...prev, { role: "assistant", content: data.response || data.message || "I'm here to help!" }]);
+
+      const assistantEntry = {
+        role: "assistant",
+        content: data.reply || data.message || "I'm here to help!",
+        id: data.id || `assistant-${Date.now()}`,
+        created_at: new Date().toISOString(),
+      };
+      setChatLog((prev) => [...prev, assistantEntry]);
     } catch (error) {
       console.error(error);
-      setChatLog((prev) => [...prev, { role: "assistant", content: "Sorry, I encountered an error. Please try again." }]);
+      setChatLog((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+          id: `error-${Date.now()}`,
+          created_at: new Date().toISOString(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -91,27 +111,32 @@ export default function AiAssistant() {
     <Card className="flex h-[80vh] flex-col">
       <CardHeader>
         <CardTitle>AI Assistant</CardTitle>
-        <CardDescription>Chat with AI about your project, get help, and receive suggestions.</CardDescription>
+        <CardDescription>
+          Chat with AI about your project, get help, and receive detailed, contextual suggestions.
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex-1 space-y-4 overflow-y-auto">
         {loadingHistory ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading conversation history...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading conversation history...
+            </p>
           </div>
         ) : chatLog.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <p className="text-lg font-semibold">How can I help you today?</p>
               <p className="text-sm text-muted-foreground mt-2">
-                Ask me about your project, get coding help, or request suggestions.
+                Ask me about your project architecture, debugging issues, task
+                planning, or implementation details.
               </p>
             </div>
           </div>
         ) : (
           <div className="space-y-4">
-            {chatLog.map((entry, index) => (
+            {chatLog.map((entry) => (
               <div
-                key={`${entry.role}-${index}`}
+                key={entry.id}
                 className={`flex gap-3 ${
                   entry.role === "user" ? "justify-end" : "justify-start"
                 }`}
@@ -128,7 +153,14 @@ export default function AiAssistant() {
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap break-words">{entry.content}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {entry.content}
+                  </p>
+                  {entry.created_at && (
+                    <p className="mt-1 text-[10px] text-muted-foreground text-right">
+                      {new Date(entry.created_at).toLocaleTimeString()}
+                    </p>
+                  )}
                 </div>
                 {entry.role === "user" && (
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold">
@@ -144,9 +176,18 @@ export default function AiAssistant() {
                 </div>
                 <div className="bg-muted rounded-lg px-4 py-3">
                   <div className="flex gap-1">
-                    <div className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <div className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <div className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <div
+                      className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    />
+                    <div
+                      className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    />
+                    <div
+                      className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    />
                   </div>
                 </div>
               </div>
@@ -160,11 +201,15 @@ export default function AiAssistant() {
           <Input
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-            placeholder="Type your message..."
-            disabled={loading}
+            placeholder={
+              projectId
+                ? "Ask about this project's code, tasks, or architecture..."
+                : "Select a project to start chatting..."
+            }
+            disabled={loading || !projectId}
             className="flex-1"
           />
-          <Button type="submit" disabled={loading || !message.trim()}>
+          <Button type="submit" disabled={loading || !message.trim() || !projectId}>
             {loading ? "Sending..." : "Send"}
           </Button>
         </form>

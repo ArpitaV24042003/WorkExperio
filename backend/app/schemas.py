@@ -309,6 +309,14 @@ class MemberAnalytics(BaseSchema):
 	total_hours: float
 	code_quality_score: float
 	project_id: Optional[str] = None
+	# Extended metrics for richer analytics
+	contribution_score: float = 0.0
+	task_consistency_score: float = 0.0  # 0-100, on-time completion
+	participation_score: float = 0.0
+	communication_score: float = 0.0
+	files_uploaded: int = 0
+	messages_sent: int = 0
+	ai_interactions: int = 0
 
 
 class TimelinePoint(BaseSchema):
@@ -326,6 +334,11 @@ class ProjectAnalyticsOverview(BaseSchema):
 	timeline: List[TimelinePoint]
 	avg_completion_minutes: float
 	code_quality_average: float
+	# Aggregate project metrics for dashboards
+	total_member_hours: float = 0.0
+	total_files_uploaded: int = 0
+	total_messages: int = 0
+	total_ai_interactions: int = 0
 
 
 class UserAnalyticsResponse(BaseSchema):

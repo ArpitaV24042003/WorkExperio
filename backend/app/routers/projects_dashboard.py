@@ -20,6 +20,7 @@ from ..models import (
 	Team,
 	TeamMember,
 	ProjectFile,
+	ChatMessage,
 )
 from ..schemas import (
 	TaskCreate,
@@ -288,18 +289,91 @@ def project_analytics_overview(
 		for day, count in sorted(timeline_counts.items())
 	]
 
-	# Per-member contributions
+	# Per-member contributions and raw activity
 	contribs = db.query(ProjectContribution).filter(ProjectContribution.project_id == project.id).all()
+	contrib_by_user = {c.user_id: c for c in contribs}
+
+	# Files per user
+	files_per_user: Dict[str, int] = defaultdict(int)
+	for f in db.query(ProjectFile).filter(ProjectFile.project_id == project.id).all():
+		files_per_user[f.user_id] += 1
+
+	# Messages per user
+	messages_per_user: Dict[str, int] = defaultdict(int)
+	for m in db.query(ChatMessage).filter(ChatMessage.project_id == project.id).all():
+		messages_per_user[m.user_id] += 1
+
+	# AI interactions per user
+	ai_per_user: Dict[str, int] = defaultdict(int)
+	for m in db.query(AIChatMessage).filter(AIChatMessage.project_id == project.id, AIChatMessage.role == "user").all():
+		if m.user_id:
+			ai_per_user[m.user_id] += 1
+
+	# Timeliness per user
+	on_time_counts: Dict[str, int] = defaultdict(int)
+	due_counts: Dict[str, int] = defaultdict(int)
+	for t in tasks:
+		if not t.assignee_id or not t.due_date:
+			continue
+		if t.status == "done" and t.completed_at:
+			due_counts[t.assignee_id] += 1
+			if t.completed_at <= t.due_date:
+				on_time_counts[t.assignee_id] += 1
+
 	members: List[MemberAnalytics] = []
-	for c in contribs:
+	total_member_hours = 0.0
+	total_files_uploaded = 0
+	total_messages = 0
+	total_ai_interactions = 0
+
+	for user_id, contrib in contrib_by_user.items():
+		tasks_done = contrib.tasks_completed
+		total_hours = contrib.total_hours
+		code_quality = contrib.code_quality_score
+		files_uploaded = files_per_user.get(user_id, 0)
+		messages_sent = messages_per_user.get(user_id, 0)
+		ai_interactions = ai_per_user.get(user_id, 0)
+
+		# Contribution formula from spec
+		contribution_score = (tasks_done * 0.5) + (files_uploaded * 0.3) + (messages_sent * 0.2)
+
+		# Task consistency as on-time completion %
+		due = due_counts.get(user_id, 0)
+		on_time = on_time_counts.get(user_id, 0)
+		task_consistency_score = (on_time / due * 100.0) if due else 0.0
+
+		# Participation score: messages + AI interactions
+		participation_score = float(messages_sent + ai_interactions)
+
+		# Simple communication score heuristic: more, longer messages score higher
+		user_msgs = db.query(ChatMessage).filter(ChatMessage.project_id == project.id, ChatMessage.user_id == user_id).all()
+		if user_msgs:
+			avg_len = sum(len(m.content or "") for m in user_msgs) / len(user_msgs)
+			communication_score = min(100.0, (len(user_msgs) * 3.0) + (avg_len / 10.0))
+		else:
+			communication_score = 0.0
+
 		members.append(
 			MemberAnalytics(
-				user_id=c.user_id,
-				tasks_completed=c.tasks_completed,
-				total_hours=c.total_hours,
-				code_quality_score=c.code_quality_score,
+				user_id=user_id,
+				tasks_completed=tasks_done,
+				total_hours=total_hours,
+				code_quality_score=code_quality,
+				project_id=project.id,
+				contribution_score=contribution_score,
+				task_consistency_score=task_consistency_score,
+				participation_score=participation_score,
+				communication_score=communication_score,
+				files_uploaded=files_uploaded,
+				messages_sent=messages_sent,
+				ai_interactions=ai_interactions,
 			)
 		)
+
+		total_member_hours += total_hours
+		total_files_uploaded += files_uploaded
+		total_messages += messages_sent
+		total_ai_interactions += ai_interactions
 
 	# Simple average completion time from timelogs
 	durations = (
@@ -328,6 +402,10 @@ def project_analytics_overview(
 		timeline=timeline,
 		avg_completion_minutes=avg_completion_minutes,
 		code_quality_average=avg_code_quality,
+		total_member_hours=total_member_hours,
+		total_files_uploaded=total_files_uploaded,
+		total_messages=total_messages,
+		total_ai_interactions=total_ai_interactions,
 	)
 
 
@@ -429,11 +507,42 @@ def project_ai_chat(
 		{"role": row.role, "content": row.content} for row in reversed(history_rows)
 	]
 
-	# Build lightweight project context
+	# Build richer project context for higher quality answers
+	project_tasks = db.query(Task).filter(Task.project_id == project.id).all()
+	project_files = db.query(ProjectFile).filter(ProjectFile.project_id == project.id).all()
+	team_members: List[TeamMember] = []
+	if project.team_id:
+		team_members = db.query(TeamMember).filter(TeamMember.team_id == project.team_id).all()
+
 	context: Dict[str, Any] = {
 		"project_title": project.title,
 		"project_description": project.description,
 		"conversation_history": conversation_history,
+		"tasks": [
+			{
+				"id": t.id,
+				"title": t.title,
+				"status": t.status,
+				"assignee_id": t.assignee_id,
+				"due_date": t.due_date.isoformat() if t.due_date else None,
+			}
+			for t in project_tasks
+		],
+		"team_members": [
+			{
+				"user_id": m.user_id,
+				"role": m.role,
+			}
+			for m in team_members
+		],
+		"files": [
+			{
+				"id": f.id,
+				"filename": f.filename,
+				"file_type": f.file_type,
+			}
+			for f in project_files
+		],
 		"suggested_tasks": [
 			"Review open tasks and pick the next one",
 			"Check overdue tasks and re-prioritize",
