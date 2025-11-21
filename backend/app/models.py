@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 import uuid
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
@@ -197,3 +197,64 @@ class ProjectFile(Base):
 	mime_type: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "text/plain", "application/zip"
 	description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 	uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Task(Base):
+	"""Per-project task with time allotment and basic workflow status."""
+
+	__tablename__ = "tasks"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+	title: Mapped[str] = mapped_column(String(255))
+	description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+	assignee_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+	estimated_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+	status: Mapped[str] = mapped_column(String(50), default="todo")  # todo / in_progress / done
+	due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+	completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TimeLog(Base):
+	"""Time tracking entries for tasks."""
+
+	__tablename__ = "timelogs"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"))
+	user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+	start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+	end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+	duration_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ProjectContribution(Base):
+	"""Aggregate contribution metrics per user per project."""
+
+	__tablename__ = "project_contributions"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+	user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+	tasks_completed: Mapped[int] = mapped_column(Integer, default=0)
+	total_hours: Mapped[float] = mapped_column(Float, default=0.0)
+	code_quality_score: Mapped[float] = mapped_column(Float, default=0.0)  # placeholder 0-100
+	last_updated: Mapped[datetime] = mapped_column(
+		DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+	)
+
+
+class AIChatMessage(Base):
+	"""Lightweight chat history for per-project AI assistant."""
+
+	__tablename__ = "ai_chat_messages"
+
+	id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid_pk()))
+	project_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True)
+	user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+	role: Mapped[str] = mapped_column(String(10))  # user/assistant/system
+	content: Mapped[str] = mapped_column(Text)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+

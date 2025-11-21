@@ -219,6 +219,9 @@ class PerformanceAnalysisResponse(BaseModel):
 	files_contribution_score: float = 0.0
 	review_summary: Dict[str, Any]
 	total_xp_awarded: int
+	images_count: int = 0  # Number of images uploaded
+	images: List[Dict[str, Any]] = []  # List of image files for report display
+	all_files: List[Dict[str, Any]] = []  # All files summary for report
 
 
 class XPUpdateRequest(BaseModel):
@@ -256,3 +259,101 @@ class ProjectFileUploadResponse(BaseModel):
 	file_size: int
 	uploaded_at: datetime
 	message: str
+
+
+# --- Task & Time tracking schemas ---
+
+
+class TaskBase(BaseModel):
+	title: str
+	description: Optional[str] = None
+	assignee_id: Optional[str] = None
+	estimated_hours: Optional[float] = None
+	status: Optional[str] = Field(default="todo")
+	due_date: Optional[datetime] = None
+
+
+class TaskCreate(TaskBase):
+	pass
+
+
+class TaskUpdate(BaseModel):
+	title: Optional[str] = None
+	description: Optional[str] = None
+	assignee_id: Optional[str] = None
+	estimated_hours: Optional[float] = None
+	status: Optional[str] = None
+	due_date: Optional[datetime] = None
+
+
+class TaskRead(BaseSchema, TaskBase):
+	id: str
+	project_id: str
+	created_at: datetime
+	completed_at: Optional[datetime] = None
+
+
+class TimeLogRead(BaseSchema):
+	id: str
+	task_id: str
+	user_id: Optional[str] = None
+	start_time: datetime
+	end_time: Optional[datetime] = None
+	duration_minutes: Optional[int] = None
+	created_at: datetime
+
+
+class MemberAnalytics(BaseSchema):
+	user_id: str
+	tasks_completed: int
+	total_hours: float
+	code_quality_score: float
+	project_id: Optional[str] = None
+
+
+class TimelinePoint(BaseSchema):
+	date: str
+	completed_count: int
+
+
+class ProjectAnalyticsOverview(BaseSchema):
+	project_id: str
+	total_tasks: int
+	tasks_completed: int
+	percent_complete: float
+	overdue_tasks: int
+	members: List[MemberAnalytics]
+	timeline: List[TimelinePoint]
+	avg_completion_minutes: float
+	code_quality_average: float
+
+
+class UserAnalyticsResponse(BaseSchema):
+	user_id: str
+	projects: List[MemberAnalytics]
+	avg_completion_minutes: float
+	on_time_completion_ratio: float
+	code_quality_average: float
+
+
+class AIProjectChatRequest(BaseModel):
+	message: str
+
+
+class AIProjectChatResponse(BaseSchema):
+	reply: str
+	id: str
+
+
+class AIChatMessageRead(BaseSchema):
+	id: str
+	project_id: Optional[str] = None
+	user_id: Optional[str] = None
+	role: str
+	content: str
+	created_at: datetime
+
+
+class CodeQualityAnalysisResponse(BaseSchema):
+	score: float
+	details: Dict[str, Any]

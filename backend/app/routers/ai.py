@@ -134,6 +134,18 @@ def analyze_project_performance(project_id: str, current_user=Depends(get_curren
 		ProjectFile.user_id == current_user.id
 	).count()
 	
+	# Get images/pictures uploaded for this project by current user (for reports)
+	images_uploaded = db.query(ProjectFile).filter(
+		ProjectFile.project_id == project_id,
+		ProjectFile.user_id == current_user.id,
+		ProjectFile.file_type == "image"
+	).all()
+	
+	# Get all project files (for report display)
+	all_project_files = db.query(ProjectFile).filter(
+		ProjectFile.project_id == project_id
+	).all()
+	
 	# Get user stats for reviews
 	user_stats = db.query(UserStats).filter(UserStats.user_id == current_user.id).first()
 	reviews: List[Dict[str, Any]] = []
@@ -155,6 +167,31 @@ def analyze_project_performance(project_id: str, current_user=Depends(get_curren
 		xp_base=100,
 		files_uploaded=files_uploaded
 	)
+	
+	# Add image data to result for report display
+	result["images_count"] = len(images_uploaded)
+	result["images"] = [
+		{
+			"id": img.id,
+			"filename": img.filename,
+			"file_path": img.file_path,
+			"mime_type": img.mime_type,
+			"uploaded_at": img.uploaded_at.isoformat() if img.uploaded_at else None
+		}
+		for img in images_uploaded
+	]
+	
+	# Add all files summary
+	result["all_files"] = [
+		{
+			"id": f.id,
+			"filename": f.filename,
+			"file_type": f.file_type,
+			"file_size": f.file_size,
+			"uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None
+		}
+		for f in all_project_files
+	]
 
 	model_log = ModelPrediction(
 		project_id=project_id,

@@ -14,6 +14,8 @@ import ProjectDetails from "./pages/ProjectDetails";
 import TeamChat from "./pages/TeamChat";
 import AiAssistant from "./pages/AiAssistant";
 import PerformanceReport from "./pages/PerformanceReport";
+import ProjectsDashboard from "./pages/ProjectsDashboard";
+import UserPerformance from "./pages/UserPerformance";
 import Settings from "./pages/Settings";
 import { ShellLayout } from "./components/ShellLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -93,10 +95,12 @@ export default function App() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/create" element={<CreateProject />} />
         <Route path="/projects/:projectId" element={<ProjectDetails />} />
+        <Route path="/projects/:projectId/dashboard" element={<ProjectsDashboard />} />
         <Route path="/projects/:projectId/team" element={<TeamSuggestions />} />
         <Route path="/projects/:projectId/chat" element={<TeamChat />} />
         <Route path="/projects/:projectId/assistant" element={<AiAssistant />} />
         <Route path="/projects/:projectId/performance" element={<PerformanceReport />} />
+        <Route path="/profile/performance" element={<UserPerformance />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 

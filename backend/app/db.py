@@ -6,11 +6,18 @@ import os
 
 
 def _normalize_database_url(raw_url: str) -> str:
+	"""
+	Normalize DATABASE_URL for different environments.
+
+	- Upgrade legacy postgres:// URLs
+	- Ensure psycopg driver for PostgreSQL
+	"""
 	if raw_url.startswith("postgres://"):
 		raw_url = raw_url.replace("postgres://", "postgresql://", 1)
 	try:
 		url = make_url(raw_url)
 	except ArgumentError:
+		# If SQLAlchemy can't parse it, just return the raw value
 		return raw_url
 
 	if url.drivername in {"postgres", "postgresql"}:
@@ -18,7 +25,9 @@ def _normalize_database_url(raw_url: str) -> str:
 	return str(url)
 
 
-DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./backend/app.db"))
+# Default to a persistent on-disk SQLite database for local development.
+# This avoids in-memory databases that lose all data on restart.
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./dev.db"))
 
 # SQLite parameters
 if DATABASE_URL.startswith("sqlite"):
@@ -53,6 +62,12 @@ def get_db():
 
 
 def create_all_tables():
+	"""
+	Import all models and create tables if they do not exist.
+
+	This is safe for SQLite and Postgres and is used on startup as a
+	fallback in addition to Alembic migrations.
+	"""
 	# Local import to avoid circular
 	from . import models  # noqa: F401
 	Base.metadata.create_all(bind=engine)

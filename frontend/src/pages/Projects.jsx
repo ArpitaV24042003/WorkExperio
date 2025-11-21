@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { apiClient, handleApiError } from "../lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { useAuthStore } from "../store/auth";
 
 export default function Projects() {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,8 +29,31 @@ export default function Projects() {
         setLoading(false);
       }
     };
-    fetchProjects();
-  }, []);
+    if (isAuthenticated) {
+      fetchProjects();
+    } else {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  // If user is not authenticated, gently nudge them instead of redirecting automatically
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[300px] space-y-3">
+        <p className="text-sm text-muted-foreground">
+          You need to be logged in to view your projects.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => navigate("/login")}>
+            Go to Login
+          </Button>
+          <Button variant="outline" onClick={() => navigate("/signup")}>
+            Create Account
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -81,7 +107,7 @@ export default function Projects() {
                 <Badge variant="outline">Team: {project.team_type}</Badge>
                 <div className="flex gap-2">
                   <Button variant="outline" asChild>
-                    <Link to={`/projects/${project.id}`}>View</Link>
+                    <Link to={`/projects/${project.id}/dashboard`}>View</Link>
                   </Button>
                   <Button variant="outline" asChild>
                     <Link to={`/projects/${project.id}/team`}>Team</Link>

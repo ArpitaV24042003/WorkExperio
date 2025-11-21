@@ -28,6 +28,7 @@ def get_mime_type(filename: str) -> str:
 	"""Get MIME type from filename extension"""
 	ext = Path(filename).suffix.lower()
 	mime_types = {
+		# Code files
 		".py": "text/x-python",
 		".js": "text/javascript",
 		".jsx": "text/javascript",
@@ -38,10 +39,21 @@ def get_mime_type(filename: str) -> str:
 		".json": "application/json",
 		".md": "text/markdown",
 		".txt": "text/plain",
+		# Archives
 		".zip": "application/zip",
+		# Documents
 		".pdf": "application/pdf",
 		".doc": "application/msword",
 		".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		# Images - for reports and displays
+		".jpg": "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png": "image/png",
+		".gif": "image/gif",
+		".svg": "image/svg+xml",
+		".webp": "image/webp",
+		".bmp": "image/bmp",
+		".ico": "image/x-icon",
 	}
 	return mime_types.get(ext, "application/octet-stream")
 
@@ -51,11 +63,14 @@ def get_file_type(filename: str) -> str:
 	ext = Path(filename).suffix.lower()
 	code_extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".json", ".md", ".java", ".cpp", ".c", ".go", ".rs", ".php", ".rb"}
 	doc_extensions = {".pdf", ".doc", ".docx", ".txt", ".md"}
+	image_extensions = {".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".bmp", ".ico"}
 	
 	if ext in code_extensions:
 		return "code"
 	elif ext in doc_extensions:
 		return "document"
+	elif ext in image_extensions:
+		return "image"  # For pictures/images in reports
 	elif ext == ".zip":
 		return "folder"
 	else:
