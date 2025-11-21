@@ -29,6 +29,25 @@ export default function UserPerformance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const downloadCsv = () => {
+    if (!data || !data.projects) return;
+    const header = ["project_id", "tasks_completed", "total_hours", "code_quality_score"];
+    const rows = data.projects.map((p) => [
+      p.project_id,
+      p.tasks_completed,
+      p.total_hours,
+      p.code_quality_score,
+    ]);
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "workexperio-performance.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
     const load = async () => {
       if (!user?.id) return;
@@ -128,10 +147,23 @@ export default function UserPerformance() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Per-project contributions</CardTitle>
-          <CardDescription>
-            Tasks completed, hours logged, and quality per project.
-          </CardDescription>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <CardTitle>Per-project contributions</CardTitle>
+              <CardDescription>
+                Tasks completed, hours logged, and quality per project.
+              </CardDescription>
+            </div>
+            {data.projects.length > 0 && (
+              <button
+                type="button"
+                onClick={downloadCsv}
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Download CSV
+              </button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {data.projects.length === 0 ? (

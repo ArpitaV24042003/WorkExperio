@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -35,6 +35,8 @@ from ..schemas import (
 	AIProjectChatResponse,
 	AIChatMessageRead,
 	CodeQualityAnalysisResponse,
+	AIAssignmentPlan,
+	AIAssignedTask,
 )
 from ..ai.assistant_chat_ai import generate_assistant_response
 from . import files as files_router
@@ -92,6 +94,60 @@ def _get_or_create_contribution(db: Session, project_id: str, user_id: str) -> P
 		db.add(contrib)
 		db.flush()
 	return contrib
+
+
+def _compute_member_skill_vector(db: Session, user_id: str) -> List[str]:
+	"""
+	Simple capability vector for a member derived from Skill rows.
+	We deliberately keep this deterministic and lightweight (no LLM call).
+	"""
+	from ..models import Skill  # local import to avoid circulars
+
+	skills = db.query(Skill).filter(Skill.user_id == user_id).all()
+	return [s.name.lower() for s in skills]
+
+
+def _task_fit_score(
+	task_title: str,
+	task_description: Optional[str],
+	member_skills: List[str],
+	current_load_hours: float,
+	estimated_hours: float,
+) -> Tuple[float, float, float, float]:
+	"""
+	Deterministic scoring function from the spec:
+
+	fit_score(member, task) = α * skill_match + β * availability + γ * past_performance
+
+	Here we approximate:
+	- skill_match in [0,100] from keyword overlap
+	- availability in [0,1] from current workload vs. estimated_hours
+	- past_performance is proxied via low current_load_hours
+	"""
+	text = f"{task_title} {task_description or ''}".lower()
+
+	# Skill match: fraction of member skills that appear as substrings in the task text
+	if member_skills:
+		match_count = sum(1 for s in member_skills if s and s in text)
+		skill_match = (match_count / len(member_skills)) * 100.0
+	else:
+		skill_match = 0.0
+
+	# Availability: prefer members with less current load; clamp to [0,1]
+	# Assume that up to 40h of assigned work is "full".
+	max_hours = 40.0
+	availability = max(0.0, 1.0 - min(current_load_hours, max_hours) / max_hours)
+
+	# Past performance proxy: again, lower current load gets higher score.
+	past_performance = max(0.0, 1.0 - min(current_load_hours, max_hours) / max_hours)
+
+	alpha, beta, gamma = 0.5, 0.3, 0.2
+	fit_score = alpha * skill_match + beta * availability * 100.0 + gamma * past_performance * 100.0
+
+	# Workload penalty (for debugging / UI only)
+	workload_penalty = (current_load_hours / max_hours) * 100.0
+
+	return fit_score, skill_match, availability, workload_penalty
 
 
 @router.post("/projects/{project_id}/tasks", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
@@ -309,22 +365,35 @@ def project_analytics_overview(
 		if m.user_id:
 			ai_per_user[m.user_id] += 1
 
-	# Timeliness per user
+	# Timeliness per user and project-level on-time / delay rates.
 	on_time_counts: Dict[str, int] = defaultdict(int)
+	late_counts: Dict[str, int] = defaultdict(int)
 	due_counts: Dict[str, int] = defaultdict(int)
-	for t in tasks:
-		if not t.assignee_id or not t.due_date:
+	for t in completed_tasks:
+		if not t.assignee_id or not t.due_date or not t.completed_at:
 			continue
-		if t.status == "done" and t.completed_at:
-			due_counts[t.assignee_id] += 1
-			if t.completed_at <= t.due_date:
-				on_time_counts[t.assignee_id] += 1
+		due_counts[t.assignee_id] += 1
+		if t.completed_at <= t.due_date:
+			on_time_counts[t.assignee_id] += 1
+		else:
+			late_counts[t.assignee_id] += 1
+
+	total_completed_with_due = sum(due_counts.values())
+	total_on_time = sum(on_time_counts.values())
+	total_late = sum(late_counts.values())
+	on_time_rate = (total_on_time / total_completed_with_due) if total_completed_with_due else 0.0
+	delay_rate = (total_late / total_completed_with_due) if total_completed_with_due else 0.0
 
 	members: List[MemberAnalytics] = []
 	total_member_hours = 0.0
 	total_files_uploaded = 0
 	total_messages = 0
 	total_ai_interactions = 0
+
+	# Participation normalization baseline so scores end up roughly in 0–100
+	max_messages = max(messages_per_user.values()) if messages_per_user else 0
+	max_files = max(files_per_user.values()) if files_per_user else 0
+	max_ai = max(ai_per_user.values()) if ai_per_user else 0
 
 	for user_id, contrib in contrib_by_user.items():
 		tasks_done = contrib.tasks_completed
@@ -334,16 +403,36 @@ def project_analytics_overview(
 		messages_sent = messages_per_user.get(user_id, 0)
 		ai_interactions = ai_per_user.get(user_id, 0)
 
-		# Contribution formula from spec
-		contribution_score = (tasks_done * 0.5) + (files_uploaded * 0.3) + (messages_sent * 0.2)
+		# --- Contribution Score (0–100) ---
+		# Spec formula:
+		#   tasks_component = (member_tasks_done / total_tasks_done) * 0.5
+		#   files_component = (member_files_uploaded / total_files_uploaded) * 0.3
+		#   comm_component  = (member_messages / total_messages) * 0.2
+		#   contribution_score = (tasks_component + files_component + comm_component) * 100
+		tasks_den = tasks_completed or 1
+		files_den = total_files_uploaded or 1
+		messages_den = total_messages or 1
 
-		# Task consistency as on-time completion %
+		tasks_component = (tasks_done / tasks_den) * 0.5
+		files_component = (files_uploaded / files_den) * 0.3
+		comm_component = (messages_sent / messages_den) * 0.2
+		contribution_score = (tasks_component + files_component + comm_component) * 100.0
+
+		# Task consistency as on-time completion % (0–100)
 		due = due_counts.get(user_id, 0)
 		on_time = on_time_counts.get(user_id, 0)
 		task_consistency_score = (on_time / due * 100.0) if due else 0.0
 
-		# Participation score: messages + AI interactions
-		participation_score = float(messages_sent + ai_interactions)
+		# Participation score (0–100) based on messages, files, AI interactions.
+		# We normalize each dimension independently and average them.
+		parts: List[float] = []
+		if max_messages:
+			parts.append((messages_sent / max_messages) * 100.0)
+		if max_files:
+			parts.append((files_uploaded / max_files) * 100.0)
+		if max_ai:
+			parts.append((ai_interactions / max_ai) * 100.0)
+		participation_score = sum(parts) / len(parts) if parts else 0.0
 
 		# Simple communication score heuristic: more, longer messages score higher
 		user_msgs = db.query(ChatMessage).filter(ChatMessage.project_id == project.id, ChatMessage.user_id == user_id).all()
@@ -392,6 +481,16 @@ def project_analytics_overview(
 	if contribs:
 		avg_code_quality = sum(c.code_quality_score for c in contribs) / len(contribs)
 
+	# --- Team Performance Score (0–100) ---
+	# team_score = 0.4*avg_code_quality + 0.35*on_time_rate*100 + 0.25*participation_score
+	avg_participation = 0.0
+	if members:
+		avg_participation = sum(m.participation_score for m in members) / len(members)
+	team_participation_score = avg_participation
+	team_performance_score = (
+		0.4 * avg_code_quality + 0.35 * on_time_rate * 100.0 + 0.25 * team_participation_score
+	)
+
 	return ProjectAnalyticsOverview(
 		project_id=project.id,
 		total_tasks=total_tasks,
@@ -406,6 +505,10 @@ def project_analytics_overview(
 		total_files_uploaded=total_files_uploaded,
 		total_messages=total_messages,
 		total_ai_interactions=total_ai_interactions,
+		on_time_rate=on_time_rate,
+		delay_rate=delay_rate,
+		team_participation_score=team_participation_score,
+		team_performance_score=team_performance_score,
 	)
 
 
@@ -849,6 +952,136 @@ async def analyze_code_quality(
 			"user_id": current_user.id,
 		},
 	)
+
+
+@router.post("/projects/{project_id}/ai-assign", response_model=AIAssignmentPlan)
+def ai_assign_tasks_and_schedule(
+	project_id: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""
+	Assign open tasks to team members using a deterministic scoring function.
+
+	Fit score formula (as described in the spec):
+	  fit_score(member, task) = α * skill_match + β * availability + γ * past_performance
+
+	Where:
+	  - skill_match is computed from resume/skill keywords vs. task text (0–100)
+	  - availability is based on current assigned workload (0–1)
+	  - past_performance is approximated by low current workload (0–1)
+
+	The endpoint updates Task.assignee_id, Task.estimated_hours, and Task.due_date,
+	and returns a structured plan that the UI can display.
+	"""
+	project = _get_project_or_404(db, project_id)
+	if project.owner_id != current_user.id:
+		raise HTTPException(
+			status_code=status.HTTP_403_FORBIDDEN,
+			detail="Only the project owner can run AI assignment",
+		)
+
+	# Ensure there is a team with members
+	if not project.team_id:
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail="Team is not set for this project; create a team and add members first.",
+		)
+
+	team = db.query(Team).filter(Team.id == project.team_id).first()
+	if not team:
+		raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+	members = db.query(TeamMember).filter(TeamMember.team_id == team.id).all()
+	if not members:
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail="No team members available for assignment.",
+		)
+
+	# Precompute member skill vectors and current workload from existing tasks.
+	member_skills: Dict[str, List[str]] = {}
+	member_hours: Dict[str, float] = defaultdict(float)
+	for m in members:
+		member_skills[m.user_id] = _compute_member_skill_vector(db, m.user_id)
+
+	existing_tasks = db.query(Task).filter(Task.project_id == project.id).all()
+	for t in existing_tasks:
+		if t.assignee_id and t.estimated_hours:
+			member_hours[t.assignee_id] += float(t.estimated_hours)
+
+	# Consider only tasks that are not yet completed.
+	open_tasks = [t for t in existing_tasks if t.status != "done"]
+	if not open_tasks:
+		return AIAssignmentPlan(project_id=project.id, assignments=[], rationale=["No open tasks to assign."])
+
+	assignments: List[AIAssignedTask] = []
+	rationale: List[str] = []
+
+	# Start scheduling from "now", allocate due dates based on estimated_hours.
+	now = datetime.now(timezone.utc)
+	hours_per_day = 4.0  # simple heuristic: 4 focused hours per day
+
+	for task in open_tasks:
+		best_member_id: Optional[str] = None
+		best_fit: float = -1.0
+		best_components: Tuple[float, float, float, float] | None = None
+
+		est_hours = float(task.estimated_hours or 2.0)
+
+		for m in members:
+			user_id = m.user_id
+			skills = member_skills.get(user_id, [])
+			load_hours = member_hours.get(user_id, 0.0)
+
+			fit, skill_match, availability, workload_penalty = _task_fit_score(
+				task.title, task.description, skills, load_hours, est_hours
+			)
+
+			if fit > best_fit:
+				best_fit = fit
+				best_member_id = user_id
+				best_components = (skill_match, availability, workload_penalty, fit)
+
+		if not best_member_id or not best_components:
+			continue
+
+		skill_match, availability, workload_penalty, fit_score_val = best_components
+
+		# Update task with chosen assignee and schedule
+		task.assignee_id = best_member_id
+		# Keep estimated_hours if already set; otherwise use est_hours
+		if task.estimated_hours is None:
+			task.estimated_hours = est_hours
+		# Simple due date: today + ceil(estimated_hours / hours_per_day) days
+		days_needed = max(1, int((float(task.estimated_hours) or est_hours) / hours_per_day + 0.5))
+		task.due_date = now + timedelta(days=days_needed)
+
+		# Update workload for future tasks
+		member_hours[best_member_id] += float(task.estimated_hours or est_hours)
+
+		assignments.append(
+			AIAssignedTask(
+				task_id=task.id,
+				task_title=task.title,
+				assignee_id=best_member_id,
+				assignee_score=fit_score_val,
+				skill_match=skill_match,
+				availability=availability,
+				workload_penalty=workload_penalty,
+				estimated_hours=float(task.estimated_hours or est_hours),
+				due_date=task.due_date,
+			)
+		)
+
+		rationale.append(
+			f"Assigned '{task.title}' to member {best_member_id} with fit score {fit_score_val:.1f} "
+			f"(skill_match={skill_match:.1f}, availability={availability:.2f}, workload_penalty={workload_penalty:.1f})."
+		)
+
+	db.commit()
+
+	return AIAssignmentPlan(project_id=project.id, assignments=assignments, rationale=rationale)
 
 
 

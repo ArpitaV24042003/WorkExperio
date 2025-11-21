@@ -312,7 +312,7 @@ class MemberAnalytics(BaseSchema):
 	# Extended metrics for richer analytics
 	contribution_score: float = 0.0
 	task_consistency_score: float = 0.0  # 0-100, on-time completion
-	participation_score: float = 0.0
+	participation_score: float = 0.0    # 0-100 participation index
 	communication_score: float = 0.0
 	files_uploaded: int = 0
 	messages_sent: int = 0
@@ -339,6 +339,11 @@ class ProjectAnalyticsOverview(BaseSchema):
 	total_files_uploaded: int = 0
 	total_messages: int = 0
 	total_ai_interactions: int = 0
+	# Project-level performance scores derived from the spec formulas
+	on_time_rate: float = 0.0             # tasks_completed_on_time / tasks_total_completed
+	delay_rate: float = 0.0               # tasks_completed_late / tasks_total_completed
+	team_participation_score: float = 0.0 # aggregate 0–100
+	team_performance_score: float = 0.0   # composite 0–100
 
 
 class UserAnalyticsResponse(BaseSchema):
@@ -347,6 +352,28 @@ class UserAnalyticsResponse(BaseSchema):
 	avg_completion_minutes: float
 	on_time_completion_ratio: float
 	code_quality_average: float
+
+
+# --- AI task / role assignment ---
+
+
+class AIAssignedTask(BaseModel):
+	task_id: str
+	task_title: str
+	assignee_id: str
+	assignee_score: float
+	skill_match: float
+	availability: float
+	workload_penalty: float
+	estimated_hours: float
+	due_date: Optional[datetime] = None
+
+
+class AIAssignmentPlan(BaseModel):
+	project_id: str
+	assignments: List[AIAssignedTask]
+	# Lightweight rationale for UI display (human readable)
+	rationale: List[str] = []
 
 
 class AIProjectChatRequest(BaseModel):

@@ -75,6 +75,9 @@ export default function ProjectsDashboard() {
   const [sendingChat, setSendingChat] = useState(false);
 
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [aiAssigning, setAiAssigning] = useState(false);
+  const [aiPlan, setAiPlan] = useState(null);
+  const [activePanel, setActivePanel] = useState(null); // "team" | "tasks" | "files" | "analytics" | "ai" | null
 
   const isOwner = project && user?.id && project.owner_id === user.id;
 
@@ -302,6 +305,30 @@ export default function ProjectsDashboard() {
     }
   };
 
+  const handleRunAiAssign = async () => {
+    if (!projectId) return;
+    setAiAssigning(true);
+    try {
+      const { data } = await apiClient
+        .post(`/projects/${projectId}/ai-assign`)
+        .catch(handleApiError);
+      setAiPlan(data || null);
+      if (data?.assignments?.length) {
+        // Refresh tasks to reflect new assignees / due dates
+        const { data: refreshed } = await apiClient
+          .get(`/projects/${projectId}/tasks`)
+          .catch(handleApiError);
+        setTasks(refreshed || []);
+      }
+      setActivePanel("tasks");
+    } catch (err) {
+      console.error("AI assign error:", err);
+      alert(err.message || "Failed to run AI assignment.");
+    } finally {
+      setAiAssigning(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -342,7 +369,7 @@ export default function ProjectsDashboard() {
         <div>
           <h1 className="text-3xl font-semibold">{project.title}</h1>
           <p className="text-muted-foreground">{project.description}</p>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="mt-1 text-xs text-muted-foreground">
             Project ID: <code className="font-mono">{project.id}</code>
           </p>
         </div>
@@ -357,14 +384,106 @@ export default function ProjectsDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-4">
-        {/* Team Members */}
-        <Card className="lg:col-span-1">
+      {/* Overview cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <Card>
           <CardHeader>
             <CardTitle>Team Members</CardTitle>
-            <CardDescription>
-              Manage roles and invite known members using their User ID.
-            </CardDescription>
+            <CardDescription>Roles and access for this project.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-2xl font-semibold">{members.length}</p>
+            <p className="text-xs text-muted-foreground">members in team</p>
+            <Button size="sm" variant="outline" onClick={() => setActivePanel("team")}>
+              View Details
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tasks</CardTitle>
+            <CardDescription>Backlog and current work.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-2xl font-semibold">{tasks.length}</p>
+            <p className="text-xs text-muted-foreground">
+              {analytics?.tasks_completed ?? 0} completed
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setActivePanel("tasks")}>
+              View Details
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Files</CardTitle>
+            <CardDescription>Uploads and artifacts.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-2xl font-semibold">{files.length}</p>
+            <p className="text-xs text-muted-foreground">project files</p>
+            <Button size="sm" variant="outline" onClick={() => setActivePanel("files")}>
+              View Details
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Analytics</CardTitle>
+            <CardDescription>Completion and performance.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-2xl font-semibold">
+              {analytics?.percent_complete?.toFixed(0) ?? 0}%
+            </p>
+            <p className="text-xs text-muted-foreground">overall completion</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/projects/${projectId}/performance`)}
+            >
+              Open Analytics
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Assistant</CardTitle>
+            <CardDescription>Chat and task guidance.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-2xl font-semibold">
+              {chatHistory.length}
+            </p>
+            <p className="text-xs text-muted-foreground">messages in this project</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(`/projects/${projectId}/assistant`)}
+            >
+              Open Assistant
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Detailed panels */}
+      {activePanel === "team" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle>Team Members</CardTitle>
+              <CardDescription>
+                Manage roles and invite known members using their User ID.
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
+              Close
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {isOwner && (
@@ -387,7 +506,7 @@ export default function ProjectsDashboard() {
                 </div>
               </div>
             )}
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {members.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No members yet. Add known members using their User ID from Profile.
@@ -396,7 +515,7 @@ export default function ProjectsDashboard() {
                 members.map((m) => (
                   <div
                     key={m.id}
-                    className="rounded-md border p-2 space-y-1 text-sm"
+                    className="space-y-1 rounded-md border p-2 text-sm"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{m.user_id}</span>
@@ -417,7 +536,9 @@ export default function ProjectsDashboard() {
                         />
                       ) : (
                         <span className="text-xs">
-                          {m.role || <span className="italic text-muted-foreground">Pending</span>}
+                          {m.role || (
+                            <span className="italic text-muted-foreground">Pending</span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -432,12 +553,30 @@ export default function ProjectsDashboard() {
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Tasks & My Tasks */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Tasks</CardTitle>
-            <CardDescription>Create and track work items with timers.</CardDescription>
+      {activePanel === "tasks" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle>Tasks</CardTitle>
+              <CardDescription>Create and track work items with timers.</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {isOwner && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRunAiAssign}
+                  disabled={aiAssigning}
+                >
+                  {aiAssigning ? "Assigning..." : "AI Assign Roles & Schedule"}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
+                Close
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <form className="space-y-2" onSubmit={handleCreateTask}>
@@ -620,66 +759,37 @@ export default function ProjectsDashboard() {
                 </div>
               </div>
             )}
+
+            {aiPlan && aiPlan.assignments?.length > 0 && (
+              <div className="space-y-2 rounded-md border p-3 text-xs">
+                <p className="font-medium">Latest AI assignment plan</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  {aiPlan.assignments.map((a) => (
+                    <li key={a.task_id}>
+                      <span className="font-semibold">{a.task_title}</span> →{" "}
+                      <span>{a.assignee_id.slice(0, 8)}...</span>{" "}
+                      <span className="text-muted-foreground">
+                        (score {a.assignee_score.toFixed(1)}, eta {a.estimated_hours.toFixed(1)}h)
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
+      )}
 
-        {/* AI Assistant */}
-        <Card className="lg:col-span-1 flex flex-col">
-          <CardHeader>
-            <CardTitle>AI Assistant</CardTitle>
-            <CardDescription>
-              Ask questions about this project, tasks, and next steps.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 h-full">
-            <div className="flex-1 overflow-y-auto space-y-2 border rounded-md p-2 bg-muted/40">
-              {chatHistory.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No messages yet. Ask the assistant about your tasks, blockers, or
-                  project plan.
-                </p>
-              ) : (
-                chatHistory.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`flex ${
-                      m.role === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-lg px-3 py-2 text-xs whitespace-pre-wrap break-words ${
-                        m.role === "user"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-background border"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
-                  </div>
-                ))
-              )}
+      {activePanel === "files" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle>Project Files</CardTitle>
+              <CardDescription>Upload and browse project artifacts.</CardDescription>
             </div>
-            <form className="flex gap-2" onSubmit={handleSendChat}>
-              <Input
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                placeholder="Ask the AI assistant..."
-                disabled={sendingChat}
-              />
-              <Button type="submit" disabled={sendingChat || !chatMessage.trim()}>
-                {sendingChat ? "Sending..." : "Send"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Files & Analytics */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Project Files</CardTitle>
-            <CardDescription>Upload and browse project artifacts.</CardDescription>
+            <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
+              Close
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
@@ -698,7 +808,7 @@ export default function ProjectsDashboard() {
                 </p>
               )}
             </div>
-            <div className="space-y-1 max-h-56 overflow-y-auto text-sm">
+            <div className="space-y-1 max-h-80 overflow-y-auto text-sm">
               {files.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No files uploaded yet.
@@ -734,48 +844,112 @@ export default function ProjectsDashboard() {
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Analytics</CardTitle>
-            <CardDescription>
-              Progress, completion, and member contribution overview.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Completion</p>
-              <p className="text-2xl font-semibold">
-                {analytics?.percent_complete?.toFixed(0) ?? 0}%
-              </p>
-              <ProgressBar value={analytics?.percent_complete ?? 0} />
-              <p className="text-xs text-muted-foreground mt-1">
-                {analytics?.tasks_completed ?? 0} /{" "}
-                {analytics?.total_tasks ?? 0} tasks done
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Overdue: {analytics?.overdue_tasks ?? 0}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Daily completions</p>
-              <MiniBarChart data={timelineData} />
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Member hours</p>
-              <MiniBarChart data={memberHoursData} />
-              <p className="text-xs text-muted-foreground mt-1">
-                Avg completion:{" "}
-                {analytics?.avg_completion_minutes?.toFixed(1) ?? 0} min
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Code quality avg:{" "}
-                {analytics?.code_quality_average?.toFixed(1) ?? 0}/100
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Compact analytics preview when no specific panel is open */}
+      {!activePanel && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle>Project Files</CardTitle>
+              <CardDescription>Upload and browse project artifacts.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="file-upload" className="text-xs text-muted-foreground">
+                  Upload file
+                </Label>
+                <Input
+                  id="file-upload"
+                  type="file"
+                  disabled={uploadingFile}
+                  onChange={handleUploadFile}
+                />
+                {uploadingFile && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Uploading...
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1 max-h-56 overflow-y-auto text-sm">
+                {files.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No files uploaded yet.
+                  </p>
+                ) : (
+                  files.map((f) => (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between rounded-md border p-2"
+                    >
+                      <div>
+                        <p className="text-xs font-medium">{f.filename}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {f.file_type || "file"} •{" "}
+                          {new Date(f.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => {
+                          window.open(
+                            `/files/projects/${projectId}/files/${f.id}/download`,
+                            "_blank"
+                          );
+                        }}
+                      >
+                        Download
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Analytics</CardTitle>
+              <CardDescription>
+                Progress, completion, and member contribution overview.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Completion</p>
+                <p className="text-2xl font-semibold">
+                  {analytics?.percent_complete?.toFixed(0) ?? 0}%
+                </p>
+                <ProgressBar value={analytics?.percent_complete ?? 0} />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {analytics?.tasks_completed ?? 0} /{" "}
+                  {analytics?.total_tasks ?? 0} tasks done
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Overdue: {analytics?.overdue_tasks ?? 0}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Daily completions</p>
+                <MiniBarChart data={timelineData} />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Member hours</p>
+                <MiniBarChart data={memberHoursData} />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Avg completion:{" "}
+                  {analytics?.avg_completion_minutes?.toFixed(1) ?? 0} min
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Code quality avg:{" "}
+                  {analytics?.code_quality_average?.toFixed(1) ?? 0}/100
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
