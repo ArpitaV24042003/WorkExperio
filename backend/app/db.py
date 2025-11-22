@@ -47,7 +47,25 @@ def _normalize_database_url(raw_url: str) -> str:
 _default_db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dev.db")
 if not os.path.isabs(_default_db_path):
 	_default_db_path = os.path.abspath(_default_db_path)
-DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", f"sqlite:///{_default_db_path}"))
+
+# Get raw DATABASE_URL from environment
+_raw_database_url = os.getenv("DATABASE_URL", f"sqlite:///{_default_db_path}")
+
+# Log the raw URL for debugging (password masked)
+if _raw_database_url.startswith("postgresql"):
+	import re
+	_masked_url = re.sub(r"(postgresql://[^:]+:)([^@]+)(@)", r"\1***\3", _raw_database_url)
+	import logging
+	logger = logging.getLogger(__name__)
+	logger.info(f"Raw DATABASE_URL (password masked): {_masked_url}")
+	
+	# Check if connection string is complete
+	if "?sslmode=require" not in _raw_database_url:
+		logger.warning("⚠️  DATABASE_URL missing ?sslmode=require - connection may fail!")
+	if ":5432" not in _raw_database_url and ".oregon-postgres.render.com" not in _raw_database_url:
+		logger.warning("⚠️  DATABASE_URL may be incomplete - missing full hostname or port!")
+
+DATABASE_URL = _normalize_database_url(_raw_database_url)
 
 # SQLite parameters
 if DATABASE_URL.startswith("sqlite"):
