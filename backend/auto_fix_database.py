@@ -53,6 +53,11 @@ def auto_fix_database():
     masked = f"{parsed.scheme}://{parsed.username}:***@{parsed.hostname}:{parsed.port}{parsed.path}"
     print(f"   {masked}")
     
+    # Show actual password (for debugging - user can see what's being used)
+    if parsed.password:
+        print(f"\n🔍 Password being used (first 4 chars): {parsed.password[:4]}***")
+        print(f"🔍 Password length: {len(parsed.password)} characters")
+    
     # Test current connection
     print("\n🔍 Testing current connection...")
     success, error = test_connection(current_url, "Current DATABASE_URL")
@@ -66,20 +71,40 @@ def auto_fix_database():
     
     if "password authentication failed" in error.lower():
         print("\n❌ Issue: Password authentication failed")
-        print("\n📋 To fix:")
-        print("1. Go to Render Dashboard → PostgreSQL service → Info tab")
-        print("2. Find 'Password' field and click eye icon to reveal it")
-        print("3. Copy the password")
-        print("4. Go to Backend service → Environment tab")
-        print("5. Edit DATABASE_URL and replace the password")
-        print("6. Make sure connection string format is:")
-        print("   postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE?sslmode=require")
+        print("\n🔍 This means the password in DATABASE_URL doesn't match PostgreSQL")
+        print("\n📋 Steps to fix:")
+        print("1. Go to Render Dashboard → PostgreSQL service (workexperio-database)")
+        print("2. Click 'Info' tab")
+        print("3. Find 'Password' field")
+        print("4. Click eye icon 👁️ to reveal the CURRENT password")
+        print("5. Copy it EXACTLY (no spaces, no typos)")
+        print("6. Go to Backend service → Environment tab")
+        print("7. Edit DATABASE_URL")
+        print("8. Find the password part (between : and @)")
+        print("9. Replace it with the password from step 4")
+        print("10. If password has special characters, they might need URL encoding")
+        print("11. Save and redeploy")
         
-        # Try to construct a test connection string
+        # Show connection string structure
         if parsed.username and parsed.hostname and parsed.path:
-            print("\n💡 Suggested connection string format:")
-            print(f"   postgresql://{parsed.username}:<PASSWORD_FROM_RENDER>@{parsed.hostname}:{parsed.port or 5432}{parsed.path}?sslmode=require")
-            print("\n   Replace <PASSWORD_FROM_RENDER> with the actual password from Render dashboard")
+            print("\n💡 Connection string structure:")
+            print(f"   postgresql://{parsed.username}:<PASSWORD>@{parsed.hostname}:{parsed.port or 5432}{parsed.path}?sslmode=require")
+            print("\n   Replace <PASSWORD> with the EXACT password from Render dashboard")
+            
+            # Check if password might need encoding
+            if parsed.password:
+                from urllib.parse import quote_plus, unquote
+                if parsed.password != unquote(parsed.password):
+                    print(f"\n⚠️  Password appears to be URL-encoded")
+                    print(f"   Decoded: {unquote(parsed.password)}")
+                # Check for special characters
+                special_chars = ['@', '#', '%', '/', ':', '?', '&', '=']
+                has_special = any(char in parsed.password for char in special_chars)
+                if has_special:
+                    print(f"\n⚠️  Password contains special characters that might need encoding")
+                    encoded = quote_plus(parsed.password)
+                    print(f"   URL-encoded version: {encoded}")
+                    print(f"   Try using the URL-encoded version in connection string")
     
     elif "connection" in error.lower() and ("refused" in error.lower() or "failed" in error.lower()):
         print("\n❌ Issue: Cannot connect to database server")
