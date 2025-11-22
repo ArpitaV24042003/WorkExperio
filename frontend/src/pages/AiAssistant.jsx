@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useAuthStore } from "../store/auth";
 import { apiClient, handleApiError } from "../lib/api";
+import ReactMarkdown from "react-markdown";
 import {
   Card,
   CardHeader,
@@ -153,11 +154,42 @@ export default function AiAssistant() {
                       : "bg-muted"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap break-words">
-                    {entry.content}
-                  </p>
+                  {entry.role === "user" ? (
+                    <p className="text-sm whitespace-pre-wrap break-words">
+                      {entry.content}
+                    </p>
+                  ) : (
+                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown
+                        components={{
+                          code: ({ node, inline, className, children, ...props }) => {
+                            const match = /language-(\w+)/.exec(className || "");
+                            return !inline && match ? (
+                              <pre className="bg-black/10 dark:bg-white/10 rounded p-3 overflow-x-auto my-2">
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              </pre>
+                            ) : (
+                              <code className="bg-black/10 dark:bg-white/10 px-1.5 py-0.5 rounded text-xs" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                          li: ({ children }) => <li className="mb-1">{children}</li>,
+                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                          em: ({ children }) => <em className="italic">{children}</em>,
+                        }}
+                      >
+                        {entry.content}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                   {entry.created_at && (
-                    <p className="mt-1 text-[10px] text-muted-foreground text-right">
+                    <p className={`mt-1 text-[10px] text-muted-foreground ${entry.role === "user" ? "text-right" : "text-left"}`}>
                       {new Date(entry.created_at).toLocaleTimeString()}
                     </p>
                   )}

@@ -77,9 +77,12 @@ export default function ProjectsDashboard() {
 
   const [uploadingFile, setUploadingFile] = useState(false);
   const [aiAssigning, setAiAssigning] = useState(false);
+  const [aiGeneratingTasks, setAiGeneratingTasks] = useState(false);
   const [aiPlan, setAiPlan] = useState(null);
   const [suggestedRoles, setSuggestedRoles] = useState([]);
   const [activePanel, setActivePanel] = useState(null); // "team" | "tasks" | "files" | "analytics" | "ai" | null
+  const [analyzingCode, setAnalyzingCode] = useState(false);
+  const [codeAnalysisResult, setCodeAnalysisResult] = useState(null);
 
   const isOwner = project && user?.id && project.owner_id === user.id;
 
@@ -215,7 +218,13 @@ export default function ProjectsDashboard() {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? data : t)));
     } catch (err) {
       console.error("Update task error:", err);
-      alert(err.message || "Failed to update task.");
+      const errorMessage = err.message || "Failed to update task.";
+      // Check if it's a validation error
+      if (errorMessage.includes("validation failed")) {
+        alert(`Task validation failed: ${errorMessage}\n\nPlease ensure the task requirements are met before marking as complete.`);
+      } else {
+        alert(errorMessage);
+      }
     }
   };
 
@@ -406,6 +415,52 @@ export default function ProjectsDashboard() {
       alert(err.message || "Failed to run AI assignment.");
     } finally {
       setAiAssigning(false);
+    }
+  };
+
+  const handleGenerateTasks = async () => {
+    if (!projectId) return;
+    setAiGeneratingTasks(true);
+    try {
+      const { data } = await apiClient
+        .post(`/projects/${projectId}/ai-generate-tasks`)
+        .catch(handleApiError);
+      if (data && data.length > 0) {
+        setTasks((prev) => [...prev, ...data]);
+        alert(`Successfully generated ${data.length} tasks!`);
+        setActivePanel("tasks");
+      } else {
+        alert("No new tasks were generated. Tasks may already exist for this project.");
+      }
+    } catch (err) {
+      console.error("AI generate tasks error:", err);
+      alert(err.message || "Failed to generate tasks.");
+    } finally {
+      setAiGeneratingTasks(false);
+    }
+  };
+
+  const handleAnalyzeCode = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAnalyzingCode(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("analysis_type", "comprehensive");
+      const { data } = await apiClient
+        .post(`/projects/${projectId}/analyze-code`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        .catch(handleApiError);
+      setCodeAnalysisResult(data);
+      alert(`Code analysis complete! Score: ${data.score?.toFixed(1)}/100`);
+    } catch (err) {
+      console.error("Code analysis error:", err);
+      alert(err.message || "Failed to analyze code.");
+    } finally {
+      setAnalyzingCode(false);
+      e.target.value = "";
     }
   };
 
@@ -666,14 +721,24 @@ export default function ProjectsDashboard() {
             </div>
             <div className="flex gap-2">
               {isOwner && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleRunAiAssign}
-                  disabled={aiAssigning}
-                >
-                  {aiAssigning ? "Assigning..." : "AI Assign Roles & Schedule"}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateTasks}
+                    disabled={aiGeneratingTasks}
+                  >
+                    {aiGeneratingTasks ? "Generating..." : "AI Generate Tasks"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRunAiAssign}
+                    disabled={aiAssigning}
+                  >
+                    {aiAssigning ? "Assigning..." : "AI Assign Roles & Schedule"}
+                  </Button>
+                </>
               )}
               <Button size="sm" variant="ghost" onClick={() => setActivePanel(null)}>
                 Close
@@ -894,20 +959,62 @@ export default function ProjectsDashboard() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div>
-              <Label htmlFor="file-upload" className="text-xs text-muted-foreground">
-                Upload file
-              </Label>
-              <Input
-                id="file-upload"
-                type="file"
-                disabled={uploadingFile}
-                onChange={handleUploadFile}
-              />
-              {uploadingFile && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Uploading...
-                </p>
+            <div className="space-y-2">
+              <div>
+                <Label htmlFor="file-upload" className="text-xs text-muted-foreground">
+                  Upload file
+                </Label>
+                <Input
+                  id="file-upload"
+                  type="file"
+                  disabled={uploadingFile}
+                  onChange={handleUploadFile}
+                />
+                {uploadingFile && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Uploading...
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="code-analysis" className="text-xs text-muted-foreground">
+                  Analyze code (single file or .zip archive)
+                </Label>
+                <Input
+                  id="code-analysis"
+                  type="file"
+                  accept=".js,.jsx,.ts,.tsx,.py,.java,.cpp,.c,.go,.zip"
+                  disabled={analyzingCode}
+                  onChange={handleAnalyzeCode}
+                />
+                {analyzingCode && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Analyzing code...
+                  </p>
+                )}
+              </div>
+              {codeAnalysisResult && (
+                <div className="mt-2 p-3 rounded-md border bg-muted/50 text-xs">
+                  <p className="font-semibold mb-1">Analysis Results:</p>
+                  <p>Overall Score: {codeAnalysisResult.score?.toFixed(1)}/100</p>
+                  {codeAnalysisResult.details?.summary && (
+                    <p className="mt-1 text-muted-foreground">
+                      {codeAnalysisResult.details.summary}
+                    </p>
+                  )}
+                  {codeAnalysisResult.details?.code_quality && (
+                    <div className="mt-2">
+                      <p className="font-medium">Code Quality: {codeAnalysisResult.details.code_quality.score?.toFixed(1)}/100</p>
+                      {codeAnalysisResult.details.code_quality.issues?.length > 0 && (
+                        <ul className="list-disc pl-4 mt-1">
+                          {codeAnalysisResult.details.code_quality.issues.slice(0, 3).map((issue, idx) => (
+                            <li key={idx} className="text-muted-foreground">{issue}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             <div className="space-y-1 max-h-80 overflow-y-auto text-sm">

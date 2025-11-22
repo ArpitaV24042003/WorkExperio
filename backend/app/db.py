@@ -27,7 +27,11 @@ def _normalize_database_url(raw_url: str) -> str:
 
 # Default to a persistent on-disk SQLite database for local development.
 # This avoids in-memory databases that lose all data on restart.
-DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./dev.db"))
+# Use absolute path to ensure persistence across directory changes
+_default_db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dev.db")
+if not os.path.isabs(_default_db_path):
+	_default_db_path = os.path.abspath(_default_db_path)
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", f"sqlite:///{_default_db_path}"))
 
 # SQLite parameters
 if DATABASE_URL.startswith("sqlite"):

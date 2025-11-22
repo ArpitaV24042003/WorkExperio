@@ -317,6 +317,8 @@ class MemberAnalytics(BaseSchema):
 	files_uploaded: int = 0
 	messages_sent: int = 0
 	ai_interactions: int = 0
+	# Optional display name (filled from User table when available)
+	user_name: Optional[str] = None
 
 
 class TimelinePoint(BaseSchema):

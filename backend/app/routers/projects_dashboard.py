@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional, Tuple
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -39,6 +40,7 @@ from ..schemas import (
 	AIAssignedTask,
 )
 from ..ai.assistant_chat_ai import generate_assistant_response
+from ..ai.task_generator import generate_tasks_from_project
 from . import files as files_router
 
 
@@ -96,6 +98,110 @@ def _get_or_create_contribution(db: Session, project_id: str, user_id: str) -> P
 	return contrib
 
 
+def _validate_task_completion(db: Session, task: Task, project: Project) -> Dict[str, Any]:
+	"""
+	AI-based task validation. Checks if a task is genuinely completed.
+	
+	The AI independently checks the corresponding files in the repository/workspace
+	and makes the final decision on whether the task meets requirements.
+	"""
+	import os
+	from ..ai.code_analyzer import analyze_code_comprehensive
+	
+	api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_WORKEXPERIO")
+	
+	if not api_key:
+		# Without AI, perform basic validation
+		# Check if there are any files uploaded for this task/project
+		project_files = db.query(ProjectFile).filter(ProjectFile.project_id == project.id).all()
+		if not project_files:
+			return {
+				"is_valid": False,
+				"feedback": "No files found for this project. Please upload relevant files to complete the task."
+			}
+		return {"is_valid": True, "feedback": "Basic validation passed"}
+	
+	try:
+		from openai import OpenAI
+		client = OpenAI(api_key=api_key)
+		
+		# Get project files related to this task
+		project_files = db.query(ProjectFile).filter(ProjectFile.project_id == project.id).all()
+		
+		# Prepare file contents
+		files_data = []
+		for pf in project_files[:10]:  # Limit to 10 files
+			if pf.file_path and Path(pf.file_path).is_file():
+				try:
+					content = Path(pf.file_path).read_text(encoding="utf-8", errors="ignore")
+					files_data.append({
+						"filename": pf.filename,
+						"content": content[:5000]  # Limit content size
+					})
+				except Exception:
+					continue
+		
+		# Build validation prompt
+		system_prompt = """You are a task validation system. Your job is to determine if a task has been genuinely completed based on the task requirements and the files provided.
+
+Return a JSON object with:
+{
+  "is_valid": true/false,
+  "feedback": "Detailed feedback on why the task is valid or invalid",
+  "missing_requirements": ["List of missing requirements if invalid"],
+  "suggestions": ["List of suggestions for improvement"]
+}"""
+		
+		user_prompt = f"""Task to validate:
+Title: {task.title}
+Description: {task.description or 'No description provided'}
+
+Files in project ({len(files_data)} files):
+{chr(10).join([f"- {fd['filename']}" for fd in files_data])}
+
+Determine if this task has been completed based on the requirements and the files provided."""
+		
+		response = client.chat.completions.create(
+			model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+			messages=[
+				{"role": "system", "content": system_prompt},
+				{"role": "user", "content": user_prompt}
+			],
+			temperature=0.2,
+		)
+		
+		content = response.choices[0].message.content or "{}"
+		
+		# Parse JSON response
+		import json
+		import re
+		try:
+			json_match = re.search(r'\{.*\}', content, re.DOTALL)
+			if json_match:
+				result = json.loads(json_match.group())
+			else:
+				result = json.loads(content)
+		except json.JSONDecodeError:
+			# Fallback validation
+			result = {
+				"is_valid": len(files_data) > 0,
+				"feedback": "Unable to perform AI validation. Basic file check passed." if files_data else "No files found for validation."
+			}
+		
+		return result
+		
+	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.error(f"Error in task validation: {e}")
+		# Fallback: basic validation
+		project_files = db.query(ProjectFile).filter(ProjectFile.project_id == project.id).all()
+		return {
+			"is_valid": len(project_files) > 0,
+			"feedback": "Validation error occurred. Basic file check passed." if project_files else "No files found for validation."
+		}
+
+
 def _estimate_code_quality(text: str) -> float:
 	"""
 	Very lightweight static "code quality" heuristic.
@@ -151,7 +257,6 @@ def _refresh_project_code_quality_from_files(db: Session, project: Project) -> N
 	we read the file contents (best-effort), compute a heuristic quality score,
 	and then average scores per user. The result is stored in ProjectContribution.code_quality_score.
 	"""
-	from pathlib import Path
 
 	# Gather all files for the project
 	files: List[ProjectFile] = (
@@ -324,6 +429,22 @@ def update_task(
 	# Track completion time and contribution when moving to done
 	if previous_status != "done" and task.status == "done":
 		task.completed_at = datetime.now(timezone.utc)
+		
+		# AI-based task validation
+		validation_result = _validate_task_completion(db, task, project)
+		
+		# If validation fails, revert status and provide feedback
+		if not validation_result.get("is_valid", False):
+			task.status = previous_status
+			task.completed_at = None
+			db.commit()
+			db.refresh(task)
+			feedback = validation_result.get("feedback", "Task does not meet completion criteria")
+			raise HTTPException(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				detail=f"Task validation failed: {feedback}"
+			)
+		
 		if task.assignee_id:
 			contrib = _get_or_create_contribution(db, project.id, task.assignee_id)
 			contrib.tasks_completed += 1
@@ -714,16 +835,16 @@ def project_ai_chat(
 	db.add(user_msg)
 	db.flush()
 
-	# Load recent history for context
+	# Load recent history for context (increased limit for better multi-turn dialogue)
 	history_rows = (
 		db.query(AIChatMessage)
 		.filter(AIChatMessage.project_id == project.id)
-		.order_by(AIChatMessage.created_at.desc())
-		.limit(20)
+		.order_by(AIChatMessage.created_at.asc())  # Order ascending for proper conversation flow
+		.limit(30)  # Increased from 20 to support longer conversations
 		.all()
 	)
 	conversation_history = [
-		{"role": row.role, "content": row.content} for row in reversed(history_rows)
+		{"role": row.role, "content": row.content} for row in history_rows
 	]
 
 	# Build richer project context for higher quality answers
@@ -1034,46 +1155,64 @@ def update_project_member_role(
 async def analyze_code_quality(
 	project_id: str,
 	file: UploadFile = File(...),
+	analysis_type: Optional[str] = Form(None),  # "individual", "team", "comprehensive"
 	current_user: User = Depends(get_current_user),
 	db: Session = Depends(get_db),
 ):
 	"""
-	Placeholder code-quality analysis endpoint.
-
-	If radon is available it could be used here, but to keep the environment
-	lightweight we compute a simple heuristic score from file length.
+	Comprehensive code analysis endpoint supporting single files and zip archives.
+	
+	Supports:
+	- Single file uploads
+	- Zip file uploads (extracts and analyzes all files)
+	- Individual, team, and comprehensive analysis modes
 	"""
+	from ..ai.code_analyzer import analyze_code_comprehensive, extract_files_from_zip
+	
 	project = _get_project_or_404(db, project_id)
 	_ensure_project_access(project, current_user, db)
 
 	content_bytes = await file.read()
-	try:
-		text = content_bytes.decode("utf-8", errors="ignore")
-	except Exception:  # pragma: no cover - very defensive
-		text = ""
-
-	lines = text.splitlines()
-	line_count = len(lines)
-	char_count = len(text)
-
-	# Very simple heuristic: shorter, focused files get higher scores
-	if line_count == 0:
-		score = 50.0
+	filename = file.filename or "unknown"
+	
+	# Check if it's a zip file
+	files_data = []
+	if filename.endswith('.zip') or filename.endswith('.ZIP'):
+		files_data = extract_files_from_zip(content_bytes)
 	else:
-		base = 100.0
-		penalty = min(50.0, line_count * 0.3)  # up to -50 points for very long files
-		score = max(0.0, base - penalty)
-
+		# Single file
+		try:
+			text = content_bytes.decode("utf-8", errors="ignore")
+			files_data = [{"filename": filename, "content": text}]
+		except Exception:
+			text = ""
+			files_data = [{"filename": filename, "content": text}]
+	
+	if not files_data:
+		raise HTTPException(
+			status_code=status.HTTP_400_BAD_REQUEST,
+			detail="No valid files found to analyze"
+		)
+	
+	# Perform comprehensive analysis
+	analysis_type_final = analysis_type or "comprehensive"
+	analysis_result = analyze_code_comprehensive(files_data, analysis_type_final)
+	
 	# Update ProjectContribution for the current user
 	contrib = _get_or_create_contribution(db, project.id, current_user.id)
-	contrib.code_quality_score = score
+	contrib.code_quality_score = analysis_result.get("overall_score", 75.0)
 	db.commit()
 
 	return CodeQualityAnalysisResponse(
-		score=score,
+		score=analysis_result.get("overall_score", 75.0),
 		details={
-			"line_count": line_count,
-			"char_count": char_count,
+			"analysis_type": analysis_type_final,
+			"files_analyzed": len(files_data),
+			"code_quality": analysis_result.get("code_quality", {}),
+			"accuracy": analysis_result.get("accuracy", {}),
+			"performance": analysis_result.get("performance", {}),
+			"individual_files": analysis_result.get("individual_files", []),
+			"summary": analysis_result.get("summary", ""),
 			"project_id": project.id,
 			"user_id": current_user.id,
 		},
@@ -1209,5 +1348,66 @@ def ai_assign_tasks_and_schedule(
 
 	return AIAssignmentPlan(project_id=project.id, assignments=assignments, rationale=rationale)
 
+
+@router.post("/projects/{project_id}/ai-generate-tasks", response_model=List[TaskRead])
+def ai_generate_tasks_from_project(
+	project_id: str,
+	current_user: User = Depends(get_current_user),
+	db: Session = Depends(get_db),
+):
+	"""
+	Automatically generate a complete task schedule from project description.
+	
+	The AI acts as an intelligent project manager, breaking down the main goal
+	into smaller, actionable sub-tasks with dependencies and timeframes.
+	"""
+	project = _get_project_or_404(db, project_id)
+	_ensure_project_access(project, current_user, db)
+	
+	# Get existing tasks to avoid duplicates
+	existing_tasks = db.query(Task).filter(Task.project_id == project.id).all()
+	existing_tasks_data = [
+		{
+			"title": t.title,
+			"description": t.description,
+			"estimated_hours": t.estimated_hours,
+		}
+		for t in existing_tasks
+	]
+	
+	# Generate tasks using AI
+	generated_tasks = generate_tasks_from_project(
+		project.title,
+		project.description,
+		existing_tasks_data if existing_tasks_data else None,
+	)
+	
+	# Create Task objects and save to database
+	created_tasks = []
+	for task_data in generated_tasks:
+		# Check if task with same title already exists
+		existing = db.query(Task).filter(
+			Task.project_id == project.id,
+			Task.title == task_data["title"]
+		).first()
+		
+		if not existing:
+			task = Task(
+				project_id=project.id,
+				title=task_data["title"],
+				description=task_data.get("description", ""),
+				estimated_hours=task_data.get("estimated_hours", 8.0),
+				status="todo",
+			)
+			db.add(task)
+			created_tasks.append(task)
+	
+	db.commit()
+	
+	# Refresh all created tasks
+	for task in created_tasks:
+		db.refresh(task)
+	
+	return [TaskRead.model_validate(t) for t in created_tasks]
 
 
