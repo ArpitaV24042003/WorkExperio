@@ -27,11 +27,29 @@ def init_database():
         db.close()
         print("✅ Database connection successful")
     except Exception as e:
-        print(f"⚠️  Database connection failed: {e}")
-        print("⚠️  This might be due to:")
-        print("   1. DATABASE_URL environment variable not set correctly")
-        print("   2. Database credentials are incorrect")
-        print("   3. Database server is not accessible")
+        error_msg = str(e)
+        print(f"⚠️  Database connection failed: {error_msg[:200]}")
+        
+        # Provide specific guidance based on error
+        if "password authentication failed" in error_msg.lower():
+            print("\n🔍 Issue: Password authentication failed")
+            print("📋 To fix:")
+            print("   1. Go to Render Dashboard → PostgreSQL service → Info tab")
+            print("   2. Find 'Password' field and click eye icon 👁️ to reveal it")
+            print("   3. Copy the CURRENT password")
+            print("   4. Go to Backend service → Environment tab")
+            print("   5. Edit DATABASE_URL and replace the password part")
+            print("   6. Format: postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE?sslmode=require")
+            print("\n💡 Run 'python auto_fix_database.py' in Render Shell for automated diagnosis")
+        elif "connection" in error_msg.lower() and "refused" in error_msg.lower():
+            print("⚠️  Issue: Cannot reach database server")
+            print("📋 Check if database service is running (not paused)")
+        else:
+            print("⚠️  This might be due to:")
+            print("   1. DATABASE_URL environment variable not set correctly")
+            print("   2. Database credentials are incorrect")
+            print("   3. Database server is not accessible")
+        
         print("⚠️  Skipping table creation. Please check your DATABASE_URL in Render environment variables.")
         return False
     
