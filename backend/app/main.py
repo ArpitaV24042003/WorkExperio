@@ -171,6 +171,31 @@ def create_app() -> FastAPI:
 			logger.warning("⚠️  Set DATABASE_URL to a PostgreSQL connection string in Render environment variables!")
 		elif DATABASE_URL.startswith("postgresql"):
 			logger.info("✅ Using PostgreSQL database - data will persist!")
+			
+			# Log connection string details (password masked)
+			import re
+			masked_url = re.sub(r"(postgresql[^:]*://[^:]+:)([^@]+)(@)", r"\1***\3", database_url)
+			logger.info(f"📋 DATABASE_URL (password masked): {masked_url}")
+			
+			# Check if connection string is complete
+			checks = []
+			if ".oregon-postgres.render.com" in database_url or ".render.com" in database_url:
+				checks.append("✅ Full hostname")
+			else:
+				checks.append("❌ Missing full hostname (.oregon-postgres.render.com)")
+			
+			if ":5432" in database_url:
+				checks.append("✅ Port")
+			else:
+				checks.append("❌ Missing port (:5432)")
+			
+			if "?sslmode=require" in database_url:
+				checks.append("✅ SSL mode")
+			else:
+				checks.append("❌ Missing SSL mode (?sslmode=require)")
+			
+			logger.info(f"🔍 Connection string check: {', '.join(checks)}")
+			
 		else:
 			logger.warning(f"⚠️  Unknown database type: {DATABASE_URL[:50]}")
 		
