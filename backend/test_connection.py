@@ -5,12 +5,12 @@ import os
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, text
 
-# Database connection details
-DB_USER = "workexperio_sopi_user"
-DB_PASSWORD = "iF5kjz3zyGYDqj8f1Cxer4Bsa4ciJZaK"
-DB_HOST = "dpg-d4ddu96mcj7s73dvtml0-a.oregon-postgres.render.com"
+# Database connection details - UPDATE THESE WITH YOUR NEW DATABASE
+DB_USER = "workexperiodb_user"
+DB_PASSWORD = "q9fWCuAxAdHrrWFNJzAqpsWotLgq8048"  # Get current password from Render dashboard
+DB_HOST = "dpg-d4gqmp75r7bs73bem4u0-a.oregon-postgres.render.com"
 DB_PORT = "5432"
-DB_NAME = "workexperio_sopi"
+DB_NAME = "workexperiodb"
 
 # URL encode the password (in case it has special characters)
 ENCODED_PASSWORD = quote_plus(DB_PASSWORD)
