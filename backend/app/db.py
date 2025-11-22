@@ -11,18 +11,34 @@ def _normalize_database_url(raw_url: str) -> str:
 
 	- Upgrade legacy postgres:// URLs
 	- Ensure psycopg driver for PostgreSQL
+	- Preserve query parameters (like ?sslmode=require)
 	"""
 	if raw_url.startswith("postgres://"):
 		raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+	
+	# Extract query parameters before parsing (to preserve them)
+	query_params = ""
+	if "?" in raw_url:
+		base_url, query_params = raw_url.split("?", 1)
+		query_params = "?" + query_params
+	else:
+		base_url = raw_url
+	
 	try:
-		url = make_url(raw_url)
+		url = make_url(base_url)
 	except ArgumentError:
 		# If SQLAlchemy can't parse it, just return the raw value
 		return raw_url
 
 	if url.drivername in {"postgres", "postgresql"}:
 		url = url.set(drivername="postgresql+psycopg")
-	return str(url)
+	
+	# Reconstruct URL with query parameters preserved
+	result = str(url)
+	if query_params and query_params not in result:
+		result += query_params
+	
+	return result
 
 
 # Default to a persistent on-disk SQLite database for local development.
