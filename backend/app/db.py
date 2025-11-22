@@ -22,22 +22,31 @@ def _normalize_database_url(raw_url: str) -> str:
 		# Extract components manually to preserve password exactly
 		from urllib.parse import urlparse, urlunparse
 		
-		# Parse to get components
+		# Parse to get components (this preserves password correctly)
 		parsed = urlparse(raw_url)
 		
 		# Preserve password exactly as-is (don't let make_url touch it)
 		# Only change the scheme to use psycopg driver
-		if parsed.password is not None:
-			# Reconstruct with psycopg driver but keep password unchanged
-			# Format: postgresql+psycopg://user:password@host:port/db?params
-			new_scheme = "postgresql+psycopg"
-			netloc = f"{parsed.username}:{parsed.password}@{parsed.hostname}"
-			if parsed.port:
-				netloc += f":{parsed.port}"
-			
-			new_parsed = parsed._replace(scheme=new_scheme, netloc=netloc)
-			result = urlunparse(new_parsed)
-			return result
+		# Reconstruct with psycopg driver but keep password and query params unchanged
+		# Format: postgresql+psycopg://user:password@host:port/db?params
+		new_scheme = "postgresql+psycopg"
+		
+		# Build netloc preserving password exactly
+		if parsed.username:
+			if parsed.password is not None:
+				netloc = f"{parsed.username}:{parsed.password}@{parsed.hostname}"
+			else:
+				netloc = f"{parsed.username}@{parsed.hostname}"
+		else:
+			netloc = parsed.hostname
+		
+		if parsed.port:
+			netloc += f":{parsed.port}"
+		
+		# Reconstruct URL with all components preserved (including query params)
+		new_parsed = parsed._replace(scheme=new_scheme, netloc=netloc)
+		result = urlunparse(new_parsed)
+		return result
 	
 	# For non-PostgreSQL or if parsing fails, use original logic
 	query_params = ""
