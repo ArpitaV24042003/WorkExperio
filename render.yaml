@@ -11,7 +11,9 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: postgresql://workexperio_sopi_user:iF5kjz3zyGYDqj8f1Cxer4Bsa4ciJZaK@dpg-d4ddu96mcj7s73dvtml0-a/workexperio_sopi
+        fromDatabase:
+          name: workexperio-db
+          property: connectionString
       - key: ALLOW_ORIGINS
         value: https://workexperio-frontend.onrender.com
       - key: ENV
