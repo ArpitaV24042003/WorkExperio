@@ -520,7 +520,7 @@ export default function ProjectsDashboard() {
       </div>
 
       {/* Overview cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
         <Card>
           <CardHeader>
             <CardTitle>Team Members</CardTitle>
@@ -604,6 +604,28 @@ export default function ProjectsDashboard() {
             </Button>
           </CardContent>
         </Card>
+
+        {project?.team_id && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Team Chat</CardTitle>
+              <CardDescription>Real-time team communication.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-2xl font-semibold">
+                {members.length}
+              </p>
+              <p className="text-xs text-muted-foreground">team members</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate(`/projects/${projectId}/chat`)}
+              >
+                Open Chat
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Detailed panels */}
