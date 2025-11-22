@@ -12,11 +12,34 @@ def _normalize_database_url(raw_url: str) -> str:
 	- Upgrade legacy postgres:// URLs
 	- Ensure psycopg driver for PostgreSQL
 	- Preserve query parameters (like ?sslmode=require)
+	- Preserve password EXACTLY as provided (don't let make_url modify it)
 	"""
 	if raw_url.startswith("postgres://"):
 		raw_url = raw_url.replace("postgres://", "postgresql://", 1)
 	
-	# Extract query parameters before parsing (to preserve them)
+	# For PostgreSQL, preserve password exactly to avoid make_url() modifying it
+	if raw_url.startswith("postgresql://"):
+		# Extract components manually to preserve password exactly
+		from urllib.parse import urlparse, urlunparse
+		
+		# Parse to get components
+		parsed = urlparse(raw_url)
+		
+		# Preserve password exactly as-is (don't let make_url touch it)
+		# Only change the scheme to use psycopg driver
+		if parsed.password is not None:
+			# Reconstruct with psycopg driver but keep password unchanged
+			# Format: postgresql+psycopg://user:password@host:port/db?params
+			new_scheme = "postgresql+psycopg"
+			netloc = f"{parsed.username}:{parsed.password}@{parsed.hostname}"
+			if parsed.port:
+				netloc += f":{parsed.port}"
+			
+			new_parsed = parsed._replace(scheme=new_scheme, netloc=netloc)
+			result = urlunparse(new_parsed)
+			return result
+	
+	# For non-PostgreSQL or if parsing fails, use original logic
 	query_params = ""
 	if "?" in raw_url:
 		base_url, query_params = raw_url.split("?", 1)
