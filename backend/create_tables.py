@@ -7,10 +7,13 @@ from app import models  # Import all models
 
 # Set your database URL here or use environment variable
 # Add ?sslmode=require for Render PostgreSQL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://workexperio_sopi_user:iF5kjz3zyGYDqj8f1Cxer4Bsa4ciJZaK@dpg-d4ddu96mcj7s73dvtml0-a.oregon-postgres.render.com/workexperio_sopi?sslmode=require"
-)
+# IMPORTANT: Never hardcode passwords! Always use environment variable.
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required. "
+        "Set it in Render environment variables with your PostgreSQL connection string."
+    )
 
 if __name__ == "__main__":
     print("🔄 Creating all database tables...")

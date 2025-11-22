@@ -109,7 +109,14 @@ Generate a comprehensive task breakdown for this project. If there are existing 
 	except Exception as e:
 		import logging
 		logger = logging.getLogger(__name__)
-		logger.error(f"Error generating tasks with AI: {e}")
+		error_msg = str(e)
+		
+		# Log quota errors specifically
+		if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+			logger.warning(f"OpenAI quota exceeded for task generation: {error_msg}")
+		else:
+			logger.error(f"Error generating tasks with AI: {error_msg}")
+		
 		return _generate_basic_tasks_fallback(project_title, project_description)
 
 

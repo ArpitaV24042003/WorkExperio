@@ -105,3 +105,4 @@ VITE_WS_URL=wss://your-backend-url
 ## 🎊 Ready to Deploy!
 
 All files are ready. Choose your platform and follow the guides! 🚀
+

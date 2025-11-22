@@ -119,7 +119,14 @@ Provide a comprehensive analysis focusing on code quality, accuracy, and perform
 	except Exception as e:
 		import logging
 		logger = logging.getLogger(__name__)
-		logger.error(f"Error in comprehensive code analysis: {e}")
+		error_msg = str(e)
+		
+		# Log quota errors specifically
+		if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+			logger.warning(f"OpenAI quota exceeded for code analysis: {error_msg}")
+		else:
+			logger.error(f"Error in comprehensive code analysis: {error_msg}")
+		
 		return _analyze_code_fallback(files_data)
 
 

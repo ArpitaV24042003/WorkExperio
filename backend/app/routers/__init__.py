@@ -1,4 +1,4 @@
-from . import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, files, domains
+from . import auth, resumes, users, projects, teams, chat, ai, xp, metrics, admin, files, domains, diagnostics
 
 __all__ = [
 	"auth",
@@ -13,4 +13,5 @@ __all__ = [
 	"admin",
 	"files",
 	"domains",
+	"diagnostics",
 ]

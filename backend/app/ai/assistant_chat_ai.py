@@ -119,18 +119,39 @@ def generate_assistant_response(
 
 		messages_payload.append({"role": "user", "content": message})
 
-		chat = client.chat.completions.create(
-			model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-			messages=messages_payload,
-			temperature=0.2,
-		)
+		try:
+			chat = client.chat.completions.create(
+				model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+				messages=messages_payload,
+				temperature=0.2,
+			)
 
-		reply_text = chat.choices[0].message.content or ""
-		
-		return {
-			"response": reply_text.strip(),
-			"suggestions": project_context.get("suggested_tasks", []),
-		}
+			reply_text = chat.choices[0].message.content or ""
+			
+			return {
+				"response": reply_text.strip(),
+				"suggestions": project_context.get("suggested_tasks", []),
+			}
+		except Exception as e:
+			import logging
+			logger = logging.getLogger(__name__)
+			error_msg = str(e)
+			
+			# Handle quota/billing errors gracefully
+			if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+				logger.warning(f"OpenAI quota exceeded: {error_msg}")
+				return {
+					"response": (
+						"I'm currently unable to process your request because the OpenAI API quota has been exceeded. "
+						"Please add billing/credits to your OpenAI account at https://platform.openai.com/account/billing\n\n"
+						"For now, I can provide basic assistance. What would you like help with?"
+					),
+					"suggestions": project_context.get("suggested_tasks", []),
+				}
+			
+			# Handle other API errors
+			logger.error(f"OpenAI API error: {error_msg}")
+			# Fall through to fallback response
 
 	# Fallback: simple contextual text if no LLM is configured.
 	project_title = project_context.get("project_title") or "your project"

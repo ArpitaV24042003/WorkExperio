@@ -19,6 +19,7 @@ from .routers import (
 	files,
 	domains,
 	projects_dashboard,
+	diagnostics,
 )
 from .db import create_all_tables
 from .metrics_store import metrics_store
@@ -67,24 +68,55 @@ def create_app() -> FastAPI:
 	async def health_check():
 		"""Health check endpoint that verifies database connection"""
 		import os
-		from .db import engine
+		from .db import engine, DATABASE_URL
 		from sqlalchemy import text
 		
 		db_status = "unknown"
 		database_url = os.getenv("DATABASE_URL", "")
+		db_type = "unknown"
+		table_count = 0
 		
 		try:
+			# Determine database type
+			if DATABASE_URL.startswith("sqlite"):
+				db_type = "SQLite (⚠️ Ephemeral - data will be lost on restart!)"
+			elif DATABASE_URL.startswith("postgresql"):
+				db_type = "PostgreSQL (✅ Persistent)"
+			else:
+				db_type = f"Unknown: {DATABASE_URL[:50]}"
+			
 			# Test database connection
 			with engine.connect() as conn:
 				conn.execute(text("SELECT 1"))
 				db_status = "connected"
+				
+				# Try to count tables to verify persistence
+				try:
+					if DATABASE_URL.startswith("postgresql"):
+						result = conn.execute(text("""
+							SELECT COUNT(*) FROM information_schema.tables 
+							WHERE table_schema = 'public'
+						"""))
+						table_count = result.scalar() or 0
+					elif DATABASE_URL.startswith("sqlite"):
+						result = conn.execute(text("""
+							SELECT COUNT(*) FROM sqlite_master 
+							WHERE type='table' AND name NOT LIKE 'sqlite_%'
+						"""))
+						table_count = result.scalar() or 0
+				except Exception:
+					table_count = -1
 		except Exception as e:
 			db_status = f"error: {str(e)[:100]}"
 		
 		return {
 			"status": "healthy" if db_status == "connected" else "degraded",
 			"database": db_status,
+			"database_type": db_type,
 			"database_url_set": bool(database_url),
+			"database_url_preview": database_url[:50] + "..." if len(database_url) > 50 else database_url if database_url else "NOT SET",
+			"tables_found": table_count,
+			"warning": "⚠️ Using SQLite - data will be lost on restart! Set DATABASE_URL to PostgreSQL." if DATABASE_URL.startswith("sqlite") else None,
 			"timestamp": datetime.utcnow().isoformat()
 		}
 
@@ -103,6 +135,8 @@ def create_app() -> FastAPI:
 	app.include_router(admin.router, prefix="/admin", tags=["admin"])
 	app.include_router(files.router, prefix="/files", tags=["files"])
 	app.include_router(domains.router, prefix="/domains", tags=["domains"])
+	app.include_router(diagnostics.router, tags=["diagnostics"])
+	app.include_router(diagnostics.router, tags=["diagnostics"])
 
 	# Simple middleware for request metrics (duration)
 	@app.middleware("http")
@@ -119,8 +153,27 @@ def create_app() -> FastAPI:
 		# Try to create tables, but don't fail if database is not available
 		import logging
 		import sys
+		from .db import DATABASE_URL
+		
 		logger = logging.getLogger(__name__)
 		logger.info("Starting WorkExperio API...")
+		
+		# Check database configuration
+		database_url = os.getenv("DATABASE_URL", "")
+		if not database_url:
+			logger.error("❌ CRITICAL: DATABASE_URL environment variable is NOT SET!")
+			logger.error("❌ The application will use SQLite, which is EPHEMERAL on Render!")
+			logger.error("❌ ALL DATA WILL BE LOST on restart/deploy!")
+			logger.error("❌ You MUST set DATABASE_URL in Render environment variables to a PostgreSQL connection string!")
+		elif DATABASE_URL.startswith("sqlite"):
+			logger.warning("⚠️  WARNING: Using SQLite database!")
+			logger.warning("⚠️  SQLite on Render uses ephemeral storage - ALL DATA WILL BE LOST on restart/deploy!")
+			logger.warning("⚠️  Set DATABASE_URL to a PostgreSQL connection string in Render environment variables!")
+		elif DATABASE_URL.startswith("postgresql"):
+			logger.info("✅ Using PostgreSQL database - data will persist!")
+		else:
+			logger.warning(f"⚠️  Unknown database type: {DATABASE_URL[:50]}")
+		
 		try:
 			logger.info("Initializing database tables...")
 			# For PostgreSQL on Render, tables should be created via migrations
