@@ -52,13 +52,13 @@ export default function PerformanceReport() {
 
   const contributionPieData =
     analytics?.members?.map((m) => ({
-      name: m.user_id.slice(0, 6),
+      name: m.user_name || "Unknown User",
       value: m.contribution_score,
     })) || [];
 
   const codeQualityBarData =
     analytics?.members?.map((m) => ({
-      name: m.user_id.slice(0, 6),
+      name: m.user_name || "Unknown User",
       code_quality: m.code_quality_score,
     })) || [];
 
@@ -70,7 +70,7 @@ export default function PerformanceReport() {
 
   const timelinessStackedData =
     analytics?.members?.map((m) => ({
-      name: m.user_id.slice(0, 6),
+      name: m.user_name || "Unknown User",
       on_time: m.task_consistency_score,
       late: 100 - m.task_consistency_score,
     })) || [];
@@ -296,7 +296,7 @@ export default function PerformanceReport() {
                     className="flex items-center justify-between rounded-md border p-3"
                   >
                     <div>
-                      <p className="text-sm font-medium">Member {m.user_id.slice(0, 8)}...</p>
+                      <p className="text-sm font-medium">{m.user_name || "Unknown User"}</p>
                       <p className="text-xs text-muted-foreground">
                         {m.tasks_completed} tasks • {m.total_hours.toFixed(1)}h •{" "}
                         {m.files_uploaded} files • {m.messages_sent} messages

@@ -44,15 +44,26 @@ export default function TeamChat() {
           const members = teamData.data.members || [];
           const nameMap = {};
           
-          // Fetch user details for each member
+          // Use names from API response first, then fetch if missing
+          members.forEach((member) => {
+            if (member.user_id && member.name) {
+              nameMap[member.user_id] = member.name;
+            }
+          });
+          
+          // Fetch user details for any members that don't have names yet
           for (const member of members) {
-            try {
-              const userData = await apiClient.get(`/users/${member.user_id}/profile`).catch(() => null);
-              if (userData?.data) {
-                nameMap[member.user_id] = userData.data.name || member.user_id;
+            if (member.user_id && !nameMap[member.user_id]) {
+              try {
+                const userData = await apiClient.get(`/users/${member.user_id}/profile`).catch(() => null);
+                if (userData?.data?.name) {
+                  nameMap[member.user_id] = userData.data.name;
+                } else {
+                  nameMap[member.user_id] = "Unknown User";
+                }
+              } catch {
+                nameMap[member.user_id] = "Unknown User";
               }
-            } catch {
-              nameMap[member.user_id] = member.user_id;
             }
           }
           
@@ -238,7 +249,7 @@ export default function TeamChat() {
         {typingUsers.size > 0 && (
           <div className="mt-2 text-xs text-muted-foreground italic animate-pulse">
             {Array.from(typingUsers)
-              .map((userId) => userNames[userId] || userId)
+              .map((userId) => userNames[userId] || "Unknown User")
               .filter(Boolean)
               .join(", ")}{" "}
             {typingUsers.size === 1 ? "is" : "are"} typing...
@@ -252,7 +263,7 @@ export default function TeamChat() {
           <p className="text-sm text-muted-foreground">No messages yet. Start the conversation!</p>
         ) : (
           messages.map((message, index) => {
-            const senderName = userNames[message.user_id] || message.user_id;
+            const senderName = userNames[message.user_id] || "Unknown User";
             const isCurrentUser = message.user_id === user?.id;
             const isOnline = onlineUsers.has(message.user_id);
             const prevMessage = index > 0 ? messages[index - 1] : null;

@@ -82,21 +82,33 @@ export default function ProjectDetails() {
               setSelectedRole(currentMember.role || "");
             }
             
-            // Fetch user details for each member
+            // Initialize member details from API response (which already includes names)
             const details = {};
+            members.forEach((member) => {
+              if (member.user_id) {
+                details[member.user_id] = {
+                  name: member.name || "Unknown User",
+                  email: member.email || "",
+                };
+              }
+            });
+            
+            // Fetch user details for any members that don't have names yet
             for (const member of members) {
-              try {
-                const userData = await apiClient.get(`/users/${member.user_id}/profile`).catch(() => null);
-                if (userData?.data) {
-                  details[member.user_id] = {
-                    name: userData.data.name || member.user_id,
-                    email: userData.data.email || "",
-                  };
-                } else {
-                  details[member.user_id] = { name: member.user_id, email: "" };
+              if (member.user_id && !details[member.user_id]?.name) {
+                try {
+                  const userData = await apiClient.get(`/users/${member.user_id}/profile`).catch(() => null);
+                  if (userData?.data?.name) {
+                    details[member.user_id] = {
+                      name: userData.data.name,
+                      email: userData.data.email || "",
+                    };
+                  } else {
+                    details[member.user_id] = { name: "Unknown User", email: "" };
+                  }
+                } catch {
+                  details[member.user_id] = { name: "Unknown User", email: "" };
                 }
-              } catch {
-                details[member.user_id] = { name: member.user_id, email: "" };
               }
             }
             setMemberDetails(details);
@@ -256,7 +268,7 @@ export default function ProjectDetails() {
             <CardContent>
               <div className="space-y-3">
                 {teamMembers.map((member) => {
-                  const memberInfo = memberDetails[member.user_id] || { name: member.user_id };
+                  const memberInfo = memberDetails[member.user_id] || { name: member.name || "Unknown User" };
                   const completion = taskCompletion[member.user_id] || { completed: false, progress: 0, filesCount: 0, messagesCount: 0 };
                   return (
                     <div key={member.id} className="space-y-2">
@@ -323,7 +335,7 @@ export default function ProjectDetails() {
           <CardContent>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {recentChats.slice(0, 5).map((chat) => {
-                const senderInfo = memberDetails[chat.user_id] || { name: chat.user_id };
+                const senderInfo = memberDetails[chat.user_id] || { name: "Unknown User" };
                 return (
                   <div key={chat.id} className="flex gap-2 text-sm">
                     <span className="font-medium text-primary">{senderInfo.name}:</span>
@@ -413,7 +425,7 @@ export default function ProjectDetails() {
               {teamMembers.map((member) => {
                 const isLeader = member.user_id === project.owner_id;
                 const isCurrentUser = member.user_id === user?.id;
-                const memberInfo = memberDetails[member.user_id] || { name: member.user_id, email: "" };
+                const memberInfo = memberDetails[member.user_id] || { name: member.name || "Unknown User", email: "" };
                 return (
                   <div key={member.id} className={`flex items-center justify-between rounded-md border p-3 ${isCurrentUser ? "bg-primary/5" : ""}`}>
                     <div className="flex items-center gap-3 flex-1">

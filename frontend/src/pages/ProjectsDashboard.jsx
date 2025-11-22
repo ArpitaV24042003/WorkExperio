@@ -115,7 +115,21 @@ export default function ProjectsDashboard() {
           ]);
 
         setProject(projectRes?.data || null);
-        setMembers(membersRes?.data?.members || []);
+        const membersData = membersRes?.data?.members || [];
+        setMembers(membersData);
+        
+        // Initialize memberDetails from API response (which already includes names)
+        const initialDetails = {};
+        membersData.forEach((m) => {
+          if (m.user_id && m.name) {
+            initialDetails[m.user_id] = {
+              name: m.name,
+              email: m.email || "",
+            };
+          }
+        });
+        setMemberDetails(initialDetails);
+        
         setAnalytics(analyticsRes?.data || null);
         setTasks(tasksRes?.data || []);
         setFiles(filesRes?.data || []);
@@ -132,49 +146,87 @@ export default function ProjectsDashboard() {
     }
   }, [projectId]);
 
-  // Load friendly display names for members so we don't show raw UUIDs in UI.
+  // Load friendly display names for all user IDs (members and task assignees) so we don't show raw UUIDs in UI.
   useEffect(() => {
-    const loadMemberDetails = async () => {
-      if (!members.length) return;
-
+    const loadUserDetails = async () => {
+      // Collect all user IDs that need names: from members and task assignees
+      const allUserIds = new Set();
+      
+      // Add member user IDs
+      members.forEach((m) => {
+        if (m.user_id) allUserIds.add(m.user_id);
+      });
+      
+      // Add task assignee IDs
+      tasks.forEach((t) => {
+        if (t.assignee_id) allUserIds.add(t.assignee_id);
+      });
+      
+      // Add project owner ID
+      if (project?.owner_id) allUserIds.add(project.owner_id);
+      
+      // Filter out IDs we already have names for
       const current = { ...memberDetails };
-      const missing = members
-        .map((m) => m.user_id)
-        .filter((id) => id && !current[id]);
+      const missing = Array.from(allUserIds).filter(
+        (id) => id && !current[id]?.name
+      );
+      
       if (!missing.length) return;
 
       try {
         const updates = {};
-        for (const id of missing) {
+        // First, check if members already have names from API response
+        members.forEach((m) => {
+          if (m.user_id && m.name && !updates[m.user_id]) {
+            updates[m.user_id] = {
+              name: m.name,
+              email: m.email || "",
+            };
+          }
+        });
+        
+        // Then fetch names for any remaining missing IDs
+        const stillMissing = missing.filter((id) => !updates[id]);
+        for (const id of stillMissing) {
           try {
             const res = await apiClient
               .get(`/users/${id}/profile`)
               .catch(() => null);
-            if (res?.data) {
+            if (res?.data?.name) {
               updates[id] = {
-                name: res.data.name || id,
+                name: res.data.name,
                 email: res.data.email || "",
               };
             } else {
-              updates[id] = { name: id, email: "" };
+              // If we can't get the name, use a placeholder but don't show UUID
+              updates[id] = { name: "Unknown User", email: "" };
             }
           } catch {
-            updates[id] = { name: id, email: "" };
+            updates[id] = { name: "Unknown User", email: "" };
           }
         }
         setMemberDetails((prev) => ({ ...prev, ...updates }));
       } catch (err) {
-        console.error("Failed to load member details:", err);
+        console.error("Failed to load user details:", err);
       }
     };
 
-    loadMemberDetails();
+    if (members.length > 0 || tasks.length > 0 || project) {
+      loadUserDetails();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members]);
+  }, [members, tasks, project]);
 
   const getMemberName = (userId) => {
     if (!userId) return "";
-    return memberDetails[userId]?.name || userId.slice(0, 8);
+    // First check if member object has name directly (from API response)
+    const member = members.find((m) => m.user_id === userId);
+    if (member?.name) return member.name;
+    // Then check memberDetails cache
+    const name = memberDetails[userId]?.name;
+    if (name) return name;
+    // If name is not loaded yet, return placeholder (never show UUID)
+    return "Loading...";
   };
 
   const handleCreateTask = async (e) => {
@@ -487,7 +539,7 @@ export default function ProjectsDashboard() {
 
   const memberHoursData =
     analytics?.members?.map((m) => ({
-      label: getMemberName(m.user_id) || m.user_id.slice(0, 6),
+      label: m.user_name || getMemberName(m.user_id) || "Unknown User",
       value: m.total_hours,
     })) || [];
 
@@ -676,13 +728,16 @@ export default function ProjectsDashboard() {
                   No members yet. Add known members using their User ID from Profile.
                 </p>
               ) : (
-                members.map((m) => (
+                members.map((m) => {
+                  // Use name from member object if available, otherwise use getMemberName
+                  const displayName = m.name || getMemberName(m.user_id);
+                  return (
                   <div
                     key={m.id}
                     className="space-y-1 rounded-md border p-2 text-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{getMemberName(m.user_id)}</span>
+                      <span className="font-medium">{displayName}</span>
                       {project.owner_id === m.user_id && (
                         <Badge variant="secondary">Owner</Badge>
                       )}
@@ -727,7 +782,8 @@ export default function ProjectsDashboard() {
                       </p>
                     )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </CardContent>
