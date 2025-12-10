@@ -1,6 +1,0 @@
-# Frontend Environment Variables for Render
-# Copy these to your Render frontend static site
-# Update URLs after deployment
-
-VITE_API_URL=https://workexperio-backend.onrender.com
-VITE_WS_URL=wss://workexperio-backend.onrender.com

@@ -59,4 +59,10 @@ htmlcov/
 docs/
 *.code-workspace
 
+# Environment files with sensitive data
+render_backend_env.txt
+render_frontend_env.txt
+*.env.txt
+ai_service/ai_model/.env
+
 
