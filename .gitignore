@@ -55,4 +55,8 @@ htmlcov/
 .vercel
 .railway
 
+# Documentation (keep locally, not in git)
+docs/
+*.code-workspace
+
 

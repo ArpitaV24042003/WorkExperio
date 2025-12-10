@@ -2,12 +2,20 @@
 
 AI-driven student collaboration platform featuring resume parsing, skill-based team formation, AI project ideation, live chat, and performance analytics.
 
+## Tech Stack
+
+- **Backend:** FastAPI (Python), PostgreSQL, MongoDB, SQLAlchemy, JWT Auth
+- **Frontend:** React 19, Vite, Tailwind CSS, Zustand, WebSockets
+- **AI:** OpenAI API for resume parsing, team matching, and project generation
+- **Deployment:** Render (Frontend + Backend), PostgreSQL on Render
+
 ## Project Structure
 
 ```
 WorkExperio_Backend/
 ├── backend/            # FastAPI application and tests
 ├── frontend/           # React + Vite + Tailwind client
+├── ai_service/         # AI service components
 └── README.md
 ```
 
