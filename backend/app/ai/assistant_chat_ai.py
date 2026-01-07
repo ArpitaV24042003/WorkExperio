@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import List, Dict, Any
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from openai import OpenAI
 
@@ -136,22 +140,71 @@ def generate_assistant_response(
 			import logging
 			logger = logging.getLogger(__name__)
 			error_msg = str(e)
+			error_type = type(e).__name__
+			
+			# Log the full error for debugging
+			logger.error(f"OpenAI API error [{error_type}]: {error_msg}")
+			
+			# Check if API key is being read (first 7 chars only for security)
+			api_key_preview = api_key[:7] + "..." if api_key and len(api_key) > 7 else "NOT_SET"
+			logger.info(f"Using API key starting with: {api_key_preview}")
 			
 			# Handle quota/billing errors gracefully
-			if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
+			if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower() or "insufficient_quota" in error_type:
 				logger.warning(f"OpenAI quota exceeded: {error_msg}")
 				return {
 					"response": (
+						"⚠️ **OpenAI API Quota Exceeded**\n\n"
 						"I'm currently unable to process your request because the OpenAI API quota has been exceeded. "
-						"Please add billing/credits to your OpenAI account at https://platform.openai.com/account/billing\n\n"
+						"This usually means:\n\n"
+						"1. **No billing method added** - Add a payment method at https://platform.openai.com/account/billing\n"
+						"2. **Credits exhausted** - Add more credits to your account\n"
+						"3. **Rate limit hit** - Too many requests in a short time\n\n"
+						"**To fix this:**\n"
+						"- Go to https://platform.openai.com/account/billing\n"
+						"- Add a payment method or purchase credits\n"
+						"- Wait a few minutes and try again\n\n"
+						"**Note:** If you just updated your API key, make sure to:\n"
+						"- Restart the backend server after changing the .env file\n"
+						"- Verify the API key is correct in your .env file\n"
+						"- Check that the .env file is in the `backend` folder\n\n"
 						"For now, I can provide basic assistance. What would you like help with?"
+					),
+					"suggestions": project_context.get("suggested_tasks", []),
+				}
+			
+			# Handle authentication errors (wrong API key)
+			if "401" in error_msg or "unauthorized" in error_msg.lower() or "invalid_api_key" in error_msg.lower():
+				logger.error(f"OpenAI API authentication failed: {error_msg}")
+				return {
+					"response": (
+						"❌ **Invalid API Key**\n\n"
+						"The OpenAI API key is invalid or incorrect. Please:\n\n"
+						"1. Check your `.env` file in the `backend` folder\n"
+						"2. Verify the API key starts with `sk-`\n"
+						"3. Get a new key from https://platform.openai.com/api-keys\n"
+						"4. Restart the backend server after updating\n\n"
+						"**Current API key status:** " + api_key_preview
 					),
 					"suggestions": project_context.get("suggested_tasks", []),
 				}
 			
 			# Handle other API errors
 			logger.error(f"OpenAI API error: {error_msg}")
-			# Fall through to fallback response
+			return {
+				"response": (
+					f"⚠️ **API Error**\n\n"
+					f"An error occurred while calling the OpenAI API:\n\n"
+					f"**Error Type:** {error_type}\n"
+					f"**Error Message:** {error_msg}\n\n"
+					f"Please check:\n"
+					f"- Your API key is valid\n"
+					f"- You have sufficient credits\n"
+					f"- Your internet connection is working\n\n"
+					f"If the problem persists, check the server logs for more details."
+				),
+				"suggestions": project_context.get("suggested_tasks", []),
+			}
 
 	# Fallback: simple contextual text if no LLM is configured.
 	project_title = project_context.get("project_title") or "your project"
