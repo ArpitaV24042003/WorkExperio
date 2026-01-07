@@ -65,4 +65,25 @@ render_frontend_env.txt
 *.env.txt
 ai_service/ai_model/.env
 
+# Local development and testing files (keep locally, not in git)
+DVD_SUBMISSION_CHECKLIST.md
+SOFTWARE_LIST.md
+SOFTWARE_SUMMARY.txt
+*.dump
+*.bat
+*.ps1
+commands_to_run
+check_tables.py
+test_connection.py
+test_db_connection.py
+test_password_exact.py
+verify_db.py
+deployment_automation_check.py
+create_render_env_template.py
+deploy.sh
+deploy_to_render.sh
+start_backend.bat
+start_frontend.bat
+test_local.ps1
+
 
