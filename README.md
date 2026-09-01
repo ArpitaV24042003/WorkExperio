@@ -80,4 +80,5 @@ VITE_WS_URL=ws://localhost:8000
 - Use a persistent websocket gateway (e.g. Uvicorn with `--ws websockets`) in production.
 
 ## Output
-View all project visualization outputs in the [Website images/](./Website images) folder.
+View all project visualization outputs in the [Website images](./Website%20images) folder.
+
