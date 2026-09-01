@@ -78,3 +78,6 @@ VITE_WS_URL=ws://localhost:8000
 - Update `ALLOW_ORIGINS` for production domains.
 - Swap SQLite for Postgres by updating `DATABASE_URL`.
 - Use a persistent websocket gateway (e.g. Uvicorn with `--ws websockets`) in production.
+
+## Output
+View all project visualization outputs in the [output/](./output) folder.
