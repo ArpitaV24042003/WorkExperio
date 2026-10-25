@@ -58,6 +58,11 @@ The platform includes AI-powered features for resume analysis, team formation, p
 - Review engine
 - Performance-related analytics
 
+# 📸 Project Visualizations
+
+Project screenshots and visualization outputs are available in the:
+
+Website images/
 ---
 
 ## 🛠️ Tech Stack
